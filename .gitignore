@@ -1,4 +1,14 @@
-# Build outputs (objects, deps, tests: all under .tmp*/)
+elisapp
+build/
+build-*/
+nasaSpaceApps
+*.o
+*.d
+.DS_Store
+
+# Static Mars datasets (downloaded/generated, never committed)
+/data/
+.tmp*/
 /elisapp
 .tmp*/
 

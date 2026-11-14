@@ -1040,7 +1040,7 @@
 #define LV_FONT_MONTSERRAT_16 0
 
 /** Montserrat 18 */
-#define LV_FONT_MONTSERRAT_18 0
+#define LV_FONT_MONTSERRAT_18 1
 
 /** Montserrat 20 */
 #define LV_FONT_MONTSERRAT_20 0
@@ -1049,7 +1049,7 @@
 #define LV_FONT_MONTSERRAT_22 0
 
 /** Montserrat 24 */
-#define LV_FONT_MONTSERRAT_24 0
+#define LV_FONT_MONTSERRAT_24 1
 
 /** Montserrat 26 */
 #define LV_FONT_MONTSERRAT_26 0
@@ -1804,7 +1804,7 @@
 #endif /*LV_USE_QNX*/
 
 /** Open a window on a PC desktop with SDL2 and read mouse and keyboard input. */
-#define LV_USE_SDL 0
+#define LV_USE_SDL 1
 
 #if LV_USE_SDL
 /** SDL include path */
