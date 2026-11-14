@@ -1,0 +1,49 @@
+{
+  "missions": [
+    {
+      "name": "Three Forks sample depot",
+      "type": "Recovery",
+      "description": "Inspect the ten sample tubes Perseverance laid on the ground between December 2022 and January 2023 as a backup cache. Check each tube and photograph it. Position approximate.",
+      "latitude": 18.451,
+      "longitude": 77.402,
+      "duration_minutes": 90,
+      "difficulty_percent": 35
+    },
+    {
+      "name": "Ingenuity at Valinor Hills",
+      "type": "Heritage",
+      "description": "Survey the helicopter where it stopped after its 72nd and last flight in January 2024, with a broken rotor blade. Document its state without touching it. Position approximate.",
+      "latitude": 18.449,
+      "longitude": 77.370,
+      "duration_minutes": 60,
+      "difficulty_percent": 50
+    },
+    {
+      "name": "Mars 2020 descent stage",
+      "type": "Heritage",
+      "description": "Find the sky crane that lowered Perseverance on 18 February 2021 and then flew away to crash at a safe distance. Map the debris field. Position approximate.",
+      "latitude": 18.437,
+      "longitude": 77.440,
+      "duration_minutes": 120,
+      "difficulty_percent": 70
+    },
+    {
+      "name": "Jezero delta front",
+      "type": "Geology",
+      "description": "Sample the layered sediments left by the river that once filled the crater lake. Position approximate.",
+      "latitude": 18.470,
+      "longitude": 77.390,
+      "duration_minutes": 180,
+      "difficulty_percent": 60
+    },
+    {
+      "name": "Jezero western rim",
+      "type": "Geology",
+      "description": "Climb to the crater rim and sample the ancient crust lifted by the impact. Long traverse with a steady ascent. Position approximate.",
+      "latitude": 18.500,
+      "longitude": 77.180,
+      "duration_minutes": 240,
+      "difficulty_percent": 85
+    }
+  ]
+}

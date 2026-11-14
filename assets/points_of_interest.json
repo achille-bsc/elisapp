@@ -1,32 +1,32 @@
 {
   "points_of_interest": [
     {
-      "name": "Perseverance Rover",
-      "description": "Mars 2020 rover, operating in Jezero crater since 18 February 2021. Replace this text with your own description.",
+      "name": "Perseverance landing site",
+      "description": "Octavia E. Butler Landing: the Mars 2020 rover touched down here, in Jezero crater, on 18 February 2021.",
       "latitude": 18.4447,
       "longitude": 77.4508
     },
     {
       "name": "Syrtis Major",
-      "description": "Dark volcanic plateau west of Isidis Planitia. Replace this text with your own description.",
+      "description": "Dark shield volcano west of Isidis Planitia, the first surface feature of Mars ever drawn from Earth (Huygens, 1659).",
       "latitude": 9.9,
       "longitude": 70.0
     },
     {
       "name": "Isidis Planitia",
-      "description": "Plain inside a giant impact basin. Replace this text with your own description.",
+      "description": "Plain inside a giant impact basin about 1500 km across.",
       "latitude": 12.9,
       "longitude": 87.0
     },
     {
-      "name": "Beagle 2 Lander",
-      "description": "Lander that reached the surface on 25 December 2003 but never called home. Replace this text with your own description.",
+      "name": "Beagle 2 lander",
+      "description": "British lander that reached the surface on 25 December 2003 but never called home. Found in 2015 on orbital images, its solar panels only partly open.",
       "latitude": 11.53,
       "longitude": 90.43
     },
     {
       "name": "Nili Fossae",
-      "description": "Group of large troughs north-east of Syrtis Major. Replace this text with your own description.",
+      "description": "Group of large troughs north-east of Syrtis Major, rich in clays and carbonates.",
       "latitude": 22.0,
       "longitude": 76.0
     }

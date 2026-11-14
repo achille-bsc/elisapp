@@ -1,3 +1,4 @@
+*
 # Norme de code Elisapp
 
 Règles communes à tout le code C++ du projet. En cas de doute, faire comme le

@@ -13,10 +13,8 @@ namespace mars {
 		const char* type;
 		const char* description;
 		t_position destination;
-		std::uint16_t durationMinutes;
-		std::uint16_t walkMinutes;
-		std::uint16_t vehicleMinutes;
-		std::uint8_t difficultyPercent;
+		std::uint16_t durationMinutes;    ///< Work on site, travel excluded.
+		std::uint8_t difficultyPercent;   ///< Of the work on site, 0 to 100.
 	};
 
 }

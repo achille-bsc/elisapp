@@ -21,8 +21,6 @@ namespace mars {
 		/// Upper bound on the file size, to keep memory use predictable.
 		static constexpr long kMaxFileBytes = 256L * 1024L;
 
-		[[nodiscard]] bool readFile(const char* path);
-
 		std::string text_;
 		std::vector<PointOfInterest> points_;
 	};

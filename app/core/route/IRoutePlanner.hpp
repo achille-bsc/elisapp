@@ -1,8 +1,9 @@
 #pragma once
 
-#include <span>
+#include <cstdint>
 
 #include "core/gps/Position.hpp"
+#include "core/route/Route.hpp"
 
 namespace mars {
 
@@ -14,9 +15,9 @@ namespace mars {
 		IRoutePlanner& operator=(const IRoutePlanner&) = delete;
 		virtual ~IRoutePlanner() = default;
 
-		/// The waypoints from `from` to `to`, both included, or an empty span when
-		/// there is no path. Valid until the next call.
-		[[nodiscard]] virtual std::span<const t_position> plan(t_position from, t_position to) = 0;
+		/// The route from `from` to `to` for a departure at `departureSeconds`
+		/// (mission time). Its waypoints are valid until the next call.
+		[[nodiscard]] virtual Route plan(t_position from, t_position to, std::uint32_t departureSeconds) = 0;
 	};
 
 }
