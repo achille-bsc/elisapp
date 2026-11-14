@@ -11,6 +11,7 @@ namespace mars::ui::theme {
 	inline constexpr std::uint32_t kSurfacePressed = 0xDCCFCB;
 	inline constexpr std::uint32_t kAccent = 0xE87B0E;
 	inline constexpr std::uint32_t kBack = 0xB5390B;
+	inline constexpr std::uint32_t kBackPressed = 0x8C2A06;
 	inline constexpr std::uint32_t kText = 0x3B1206;
 	inline constexpr std::uint32_t kHint = 0x6F5F5C;
 	inline constexpr std::uint32_t kOnMap = 0xFFFFFF;
@@ -35,6 +36,7 @@ namespace mars::ui::theme {
 		lv_style_t sheet;
 		lv_style_t card;
 		lv_style_t backButton;
+		lv_style_t backPressed;
 		lv_style_t hint;
 		lv_style_t smallText;
 		lv_style_t onMapText;

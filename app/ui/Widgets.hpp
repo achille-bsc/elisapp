@@ -9,8 +9,10 @@ namespace mars::ui::widgets {
 	lv_obj_t* box(lv_obj_t* parent, const lv_style_t* style = nullptr);
 
 	/// A box that reacts to presses and calls `onClick` with `context` as the
-	/// event user data.
-	lv_obj_t* button(lv_obj_t* parent, const lv_style_t* style, lv_event_cb_t onClick, void* context);
+	/// event user data. `pressedStyle` is applied while it is held down; the
+	/// theme's light "pressed" style by default.
+	lv_obj_t* button(lv_obj_t* parent, const lv_style_t* style, lv_event_cb_t onClick, void* context,
+		const lv_style_t* pressedStyle = nullptr);
 
 	/// A label showing `text` without copying it: the string must outlive the label.
 	lv_obj_t* label(lv_obj_t* parent, const char* text);

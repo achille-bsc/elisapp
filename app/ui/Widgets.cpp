@@ -16,11 +16,12 @@ namespace mars::ui::widgets {
 		return object;
 	}
 
-	lv_obj_t* button(lv_obj_t* parent, const lv_style_t* style, lv_event_cb_t onClick, void* context)
+	lv_obj_t* button(lv_obj_t* parent, const lv_style_t* style, lv_event_cb_t onClick, void* context,
+		const lv_style_t* pressedStyle)
 	{
 		lv_obj_t* const object = box(parent, style);
 		lv_obj_set_clickable(object, true);
-		lv_obj_add_style(object, &theme::styles().pressed, LV_STATE_PRESSED);
+		lv_obj_add_style(object, pressedStyle != nullptr ? pressedStyle : &theme::styles().pressed, LV_STATE_PRESSED);
 		lv_obj_add_event_cb(object, onClick, LV_EVENT_CLICKED, context);
 		return object;
 	}

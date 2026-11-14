@@ -44,6 +44,9 @@ namespace mars::ui::theme {
 			lv_style_set_radius(&s.backButton, LV_RADIUS_CIRCLE);
 			lv_style_set_text_color(&s.backButton, lv_color_hex(kSurface));
 
+			lv_style_init(&s.backPressed);
+			lv_style_set_bg_color(&s.backPressed, lv_color_hex(kBackPressed));
+
 			lv_style_init(&s.hint);
 			lv_style_set_text_color(&s.hint, lv_color_hex(kHint));
 
