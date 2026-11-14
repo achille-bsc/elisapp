@@ -5,3 +5,8 @@ nasaSpaceApps
 *.o
 *.d
 .DS_Store
+
+# Static Mars datasets (downloaded/generated, never committed)
+/data/
+.tmp*/
+/elisapp

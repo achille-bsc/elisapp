@@ -103,6 +103,33 @@ re:
 	@$(MAKE) fclean
 	@$(MAKE) build
 
+# Data module must stay MCU friendly (STM32): no heap, stdio, libm, exceptions,
+# no float->double, small stack frames. weather_sim is PC only, not checked.
+EMBED_SRC   = $(filter-out %_sim.cpp,$(sort $(wildcard $(APP_DIR)/data/*.cpp)))
+EMBED_BAD   = malloc|_Znw|_Zna|_Zdl|fopen|fread|fclose|printf|_cos|_sin|_atan|_sqrt|_hypot|__cxa_|__gxx_
+
+check-embedded:
+	@mkdir -p $(TMP_DIR)/embed
+	@for f in $(EMBED_SRC); do \
+	    $(CXX) $(CXXFLAGS) -Os -fno-exceptions -fno-rtti -Wdouble-promotion \
+	        -Wframe-larger-than=512 -I. -I$(APP_DIR) -c $$f \
+	        -o $(TMP_DIR)/embed/$$(basename $$f .cpp).o \
+	        || { printf "%b\n" "$(RED)Error compiling $$f!$(DEF_COLOR)"; exit 1; }; \
+	done
+	@if nm -u $(TMP_DIR)/embed/*.o | grep -E -i '$(EMBED_BAD)'; then \
+	    printf "%b\n" "$(RED)Embedded check failed: heavy symbol above$(DEF_COLOR)"; \
+	    exit 1; \
+	fi
+	@printf "%b\n" "$(GREEN)Embedded check OK (no heap, stdio, libm, exceptions)$(DEF_COLOR)"
+
+# Data module tests (no LVGL/SDL). Optional: make test ZONE=data/zone.bin
+test: check-embedded
+	@mkdir -p $(TMP_DIR)
+	@$(CXX) $(CXXFLAGS) -I. -I$(APP_DIR) tests/data_test.cpp \
+	    $(sort $(wildcard $(APP_DIR)/data/*.cpp)) -o $(TMP_DIR)/data_test \
+	    || (printf "%b\n" "$(RED)Error compiling tests!$(DEF_COLOR)" && exit 1)
+	@./$(TMP_DIR)/data_test $(ZONE)
+
 .DELETE_ON_ERROR:
 
-.PHONY: all build clean fclean re
+.PHONY: all build clean fclean re test check-embedded
