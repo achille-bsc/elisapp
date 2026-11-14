@@ -6,19 +6,9 @@
 #include <optional>
 #include <span>
 
+#include "core/gps/Position.hpp"
+
 namespace mars {
-
-	struct s_position {
-		std::int32_t latitudeE7;
-		std::uint32_t longitudeEastE7;
-
-		[[nodiscard]] constexpr bool isValid() const noexcept
-		{
-			return latitudeE7 >= -900'000'000 && latitudeE7 <= 900'000'000 && longitudeEastE7 < 3'600'000'000u;
-		}
-	} typedef t_position;
-
-
 
 	class PositionPacket {
 	public:

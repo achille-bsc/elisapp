@@ -1,0 +1,109 @@
+#include "core/poi/PointOfInterestJsonParser.hpp"
+
+#include <cmath>
+#include <cstdint>
+#include <cstring>
+
+#include "core/json/JsonReader.hpp"
+
+namespace mars {
+
+	namespace {
+
+		constexpr double kE7 = 1e7;
+
+		[[nodiscard]] bool toPosition(double latitude, double longitude, t_position& position) noexcept
+		{
+			if (!(latitude >= -90.0 && latitude <= 90.0) || !(longitude >= -180.0 && longitude <= 360.0)) {
+				return false;  // also rejects NaN
+			}
+			if (longitude < 0.0) {
+				longitude += 360.0;
+			}
+			std::int64_t longitudeE7 = std::llround(longitude * kE7);
+			if (longitudeE7 >= 3'600'000'000) {
+				longitudeE7 -= 3'600'000'000;
+			}
+			position = {static_cast<std::int32_t>(std::llround(latitude * kE7)), static_cast<std::uint32_t>(longitudeE7)};
+			return position.isValid();
+		}
+
+		[[nodiscard]] bool parsePoint(json::Reader& reader, PointOfInterest& point)
+		{
+			const char* name = nullptr;
+			const char* description = "";
+			double latitude = NAN;
+			double longitude = NAN;
+
+			if (!reader.beginObject()) {
+				return false;
+			}
+			const char* key = nullptr;
+			while (reader.nextKey(key)) {
+				bool ok = false;
+				if (std::strcmp(key, "name") == 0) {
+					ok = reader.readString(name);
+				} else if (std::strcmp(key, "description") == 0) {
+					ok = reader.readString(description);
+				} else if (std::strcmp(key, "latitude") == 0) {
+					ok = reader.readNumber(latitude);
+				} else if (std::strcmp(key, "longitude") == 0) {
+					ok = reader.readNumber(longitude);
+				} else {
+					ok = reader.skipValue();
+				}
+				if (!ok) {
+					return false;
+				}
+			}
+			if (reader.failed() || name == nullptr || name[0] == '\0') {
+				return false;
+			}
+			point.name = name;
+			point.description = description;
+			return toPosition(latitude, longitude, point.position);
+		}
+
+		[[nodiscard]] bool parseDocument(json::Reader& reader, std::vector<PointOfInterest>& points)
+		{
+			bool found = false;
+			if (!reader.beginObject()) {
+				return false;
+			}
+			const char* key = nullptr;
+			while (reader.nextKey(key)) {
+				if (std::strcmp(key, "points_of_interest") != 0) {
+					if (!reader.skipValue()) {
+						return false;
+					}
+					continue;
+				}
+				if (found || !reader.beginArray()) {
+					return false;
+				}
+				found = true;
+				while (reader.nextElement()) {
+					PointOfInterest point{};
+					if (!parsePoint(reader, point)) {
+						return false;
+					}
+					points.push_back(point);
+				}
+			}
+			return found && reader.atEnd();
+		}
+
+	}
+
+	bool PointOfInterestJsonParser::parse(char* begin, char* end, std::vector<PointOfInterest>& points)
+	{
+		points.clear();
+		json::Reader reader{begin, end};
+		if (!parseDocument(reader, points)) {
+			points.clear();
+			return false;
+		}
+		return true;
+	}
+
+}
