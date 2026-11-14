@@ -11,7 +11,7 @@ namespace mars::ui {
 	namespace {
 
 		/// Free space kept around the points by fitAll(), in pixels.
-		constexpr std::int32_t kFitMargin = 110;
+		constexpr std::int32_t kFitMargin = 140;
 
 		/// Plain fill shown while a layer has no picture, indexed by MapLayer.
 		constexpr std::array<std::uint32_t, kMapLayerCount> kFallbackColors{0x8A4B35, 0x2F7F5F, 0x6E5A86};
