@@ -1,0 +1,7 @@
+elisap
+build/
+build-*/
+nasaSpaceApps
+*.o
+*.d
+.DS_Store

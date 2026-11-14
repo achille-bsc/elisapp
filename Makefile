@@ -1,4 +1,4 @@
-NAME      := nasaSpaceApps
+NAME      := elisapp
 # Cross-compilation ARM : make CROSS=aarch64-linux-gnu- SDL_CONFIG=/chemin/sysroot/usr/bin/sdl2-config
 # (ou arm-linux-gnueabihf- pour ARM 32 bits). Vide = build natif.
 CROSS     ?=
