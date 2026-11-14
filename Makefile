@@ -26,10 +26,11 @@ CXXFLAGS    = -std=c++20 -O0 -g \
               -Wshadow -Wconversion -Wsign-conversion
 
 CFLAGS      = -O0 -g
-DEPFLAGS    = -MMD -MP
+DEPFLAGS    = -MMD -MP -fdiagnostics-color=always
 
 SDL_PREFIX := $(shell $(SDL_CONFIG) --prefix 2>/dev/null)
-INCLUDES    = -I. -I$(APP_DIR) \
+INCLUDES    = -DLV_CONF_INCLUDE_SIMPLE \
+              -I. -I$(APP_DIR) \
               -isystem $(LV_DIR) \
               -isystem $(SDL_PREFIX)/include
 LDFLAGS    := $(shell $(SDL_CONFIG) --libs 2>/dev/null)
@@ -45,7 +46,13 @@ GREEN       = \033[1;38;2;0;255;0m
 RED         = \033[1;38;2;255;0;0m
 DEF_COLOR   = \033[0m
 
+# Progress
+CLEAR_LINE  = printf "\r\033[K"
+SHOW_LOG    = if [ -s $@.log ]; then $(CLEAR_LINE); cat $@.log; fi; rm -f $@.log
+PROGRESS    = printf "\r%3d%%" $$(( $$(find $(TMP_DIR) -name '*.o' | wc -l) * 100 / $(words $(OBJS)) ))
+
 # Checks
+HASH       := \#
 ifeq ($(filter clean fclean,$(MAKECMDGOALS)),)
     ifeq ($(SRC),)
         $(error No .cpp found in $(APP_DIR)/)
@@ -55,6 +62,9 @@ ifeq ($(filter clean fclean,$(MAKECMDGOALS)),)
     endif
     ifeq ($(wildcard lv_conf.h),)
         $(error lv_conf.h not found)
+    endif
+    ifneq ($(filter 0,$(word 2,$(shell grep -m1 '^$(HASH)if' lv_conf.h))),)
+        $(error lv_conf.h disabled: set its first '#if 0' to '#if 1')
     endif
     ifeq ($(SDL_PREFIX),)
         $(error $(SDL_CONFIG) not found)
@@ -71,19 +81,24 @@ endif
 build: $(NAME)
 
 $(NAME): $(OBJS)
+	@$(CLEAR_LINE)
 	@$(CXX) $(OBJS) -o $@ $(LDFLAGS) \
 	    && printf "%b\n" "$(GREEN)Compilation successful !$(DEF_COLOR)" \
 	    || (printf "%b\n" "$(RED)Error during linking!$(DEF_COLOR)" && exit 1)
 
 $(TMP_DIR)/%.o: %.cpp
 	@mkdir -p $(dir $@)
-	@$(CXX) $(CXXFLAGS) $(DEPFLAGS) $(INCLUDES) -c $< -o $@ \
-	    || (printf "%b\n" "$(RED)Error compiling $<!$(DEF_COLOR)" && exit 1)
+	@$(CXX) $(CXXFLAGS) $(DEPFLAGS) $(INCLUDES) -c $< -o $@ 2> $@.log \
+	    || ($(SHOW_LOG); printf "%b\n" "$(RED)Error compiling $<!$(DEF_COLOR)"; exit 1)
+	@$(SHOW_LOG)
+	@$(PROGRESS)
 
 $(TMP_DIR)/%.o: %.c
 	@mkdir -p $(dir $@)
-	@$(CC) $(CFLAGS) $(DEPFLAGS) $(INCLUDES) -c $< -o $@ \
-	    || (printf "%b\n" "$(RED)Error compiling $<!$(DEF_COLOR)" && exit 1)
+	@$(CC) $(CFLAGS) $(DEPFLAGS) $(INCLUDES) -c $< -o $@ 2> $@.log \
+	    || ($(SHOW_LOG); printf "%b\n" "$(RED)Error compiling $<!$(DEF_COLOR)"; exit 1)
+	@$(SHOW_LOG)
+	@$(PROGRESS)
 
 $(OBJS): Makefile
 
