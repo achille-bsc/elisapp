@@ -32,7 +32,7 @@ SDL_PREFIX := $(shell $(SDL_CONFIG) --prefix 2>/dev/null)
 INCLUDES    = -DLV_CONF_INCLUDE_SIMPLE \
               -I. -I$(APP_DIR) \
               -isystem $(LV_DIR) \
-              -isystem $(SDL_PREFIX)/include
+              -idirafter $(SDL_PREFIX)/include
 LDFLAGS    := $(shell $(SDL_CONFIG) --libs 2>/dev/null)
 
 JOBS       := $(shell nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 1)
