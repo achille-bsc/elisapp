@@ -1,0 +1,104 @@
+SOURCES DU PROJET ELISAPP
+Une ligne par source : ce qu'elle est, puis pourquoi elle a servi.
+Toute nouvelle source utilisée pour le code, une constante ou un choix s'ajoute ici.
+
+=== Défi ===
+
+NASA Space Apps Challenge 2026 - Abandoned but not Forgotten: Storytelling about NASA's Discarded Equipment on the Moon and Mars
+https://www.spaceappschallenge.org/2026/challenges/nasas-discarded-equipment-storytelling/?tab=resources
+-> Sujet du hackathon : idée d'une carte de Mars avec itinéraire sûr.
+
+=== Topographie ===
+
+MOLA MEGDR 32 px/deg (Mars Global Surveyor, PDS Geosciences Node), image + label
+https://pds-geosciences.wustl.edu/mgs/mgs-m-mola-5-megdr-l3-v1/mgsl_300x/meg032/megt90n000fb.img
+https://pds-geosciences.wustl.edu/mgs/mgs-m-mola-5-megdr-l3-v1/mgsl_300x/meg032/megt90n000fb.lbl
+-> Altitudes de la zone (tools/fetch_landform.py). Le label confirme le format : 5760 x 11520, int16 MSB, planétocentrique, 32 px/deg, rayon de référence 3396 km ; le serveur accepte les requêtes HTTP Range (seules les lignes utiles sont lues).
+-> Bornes MOLA -8206 m / +21181 m (landform.hpp, weather_model.cpp).
+
+USGS - Mars 2020 Terrain Relative Navigation HiRISE DTM Mosaic (Fergason et al. 2020, DOI 10.5066/P9REJ9JN)
+https://www.usgs.gov/data/mars-2020-terrain-relative-navigation-hirise-dtm-mosaic
+-> Candidat de MNT haute résolution sur Jezero (rapport point 1.4). Identifiant du produit "..._1m_..." : 1 m/pixel non confirmé (page technique en erreur 403).
+
+USGS - Mars 2020 Terrain Relative Navigation CTX DTM Mosaic (Fergason et al. 2020, DOI 10.5066/P906QQT8)
+https://www.usgs.gov/data/mars-2020-terrain-relative-navigation-ctx-dtm-mosaic
+-> Couche fine CTX du relief mixte (landform_add_layer, tools/fetch_landform.py --grid). Identifiant du produit "..._20m_..." : 20 m/pixel non confirmé (page technique en erreur 403).
+
+Kirk, Fergason et al. 2020 - Evaluating stereo DTM quality at Jezero Crater, Mars with HRSC, CTX, and HiRISE images (ISPRS 2020)
+https://pubs.usgs.gov/publication/70212659
+-> Comparaison de la qualité des MNT HRSC / CTX / HiRISE sur Jezero (choix du MNT, rapport point 1.4).
+
+=== Atmosphère, météo ===
+
+NASA NSSDC - Mars Fact Sheet
+https://nssdc.gsfc.nasa.gov/planetary/factsheet/marsfact.html
+-> Hauteur d'échelle 11,1 km (MARS_SCALE_HEIGHT_M), pression moyenne 6,36 mb, variation saisonnière 4,0 à 8,7 mb.
+
+Wikipedia - Climate of Mars
+https://en.wikipedia.org/wiki/Climate_of_Mars
+-> Ordres de grandeur seulement : marées thermiques jusqu'à ~10 % de la pression, amplitude diurne de température à Gale (~73 K entre moyennes des max et des min). Amplitude TEMPERATURE_DIURNAL_AMPLITUDE_DK et heures des pics à remplacer par des valeurs REMS/MEDA publiées.
+
+Durée du sol martien : 24 h 39 min 35 s = 88775 s (MARS_SOL_S), valeur standard reprise par de nombreuses sources secondaires (non trouvée telle quelle dans la fiche NASA).
+
+Pression de référence du géoïde MOLA : point triple de l'eau, 610,5 Pa (DATUM_PRESSURE_DEFAULT_DPA).
+
+=== Radiation ===
+
+Hassler et al. 2014 - Mars' Surface Radiation Environment Measured with the Mars Science Laboratory's Curiosity Rover, Science 343, DOI 10.1126/science.1244797
+https://cosmochemistry-papers.com/2014/01/24/mars-surface-radiation-environment-measured-with-the-mars-science-laboratorys-curiosity-rover/
+-> Dose moyenne à Gale 0,210 +- 0,040 mGy/jour (contrôle du modèle) et 0,64 mSv/jour : facteur de qualité ~3,05 (RAD_QUALITY_FACTOR_PERCENT).
+
+Rafkin et al. 2014 - Diurnal variations of energetic particle radiation at the surface of Mars as observed by the MSL RAD, JGR Planets 119, DOI 10.1002/2013JE004525
+https://zendy.io/title/10.1002/2013je004525
+-> La dose est inversement liée à la masse de la colonne d'atmosphère, donc à la pression (marée thermique) : base physique du modèle.
+
+Guo et al. 2015 - Modeling the variations of Dose Rate measured by RAD during the first MSL Martian year: 2012-2014, ApJ 810 (arXiv 1507.03473)
+https://arxiv.org/html/1507.03473v2
+-> Modèle D = D01 + kappa P + beta Phi (Eq. 3 et 7) : kappa = -0,13 uGy/jour/Pa (section IV.1.2), P0 = 840 Pa, D01' = 267,17 uGy/jour et beta = -0,11 uGy/jour/MV pour le détecteur E (ces deux derniers lus dans un résumé, à revérifier dans le texte). Variation diurne de la colonne d'air +-5 % (PRESSURE_DIURNAL_AMPLITUDE_PERMILLE).
+
+Guo et al. 2017 - Dependence of the Martian radiation environment on atmospheric depth: Modeling and measurement, JGR Planets 122 (arXiv 1712.06987)
+https://arxiv.org/abs/1712.06987
+-> Confirme l'effet de bouclier de l'atmosphère et son affaiblissement quand la modulation solaire est forte (choix de garder PHI réglable, SOLAR_MODULATION_MV).
+
+=== Normes NASA (zones de danger) ===
+
+NASA OCHMO-TB-020 - Design for Ionizing Radiation Protection (fiche technique NASA-STD-3001)
+https://www.nasa.gov/wp-content/uploads/2023/03/radiation-protection-technical-brief-ochmo.pdf
+-> NASA-STD-3001 Vol. 1 Rev B, texte cité : [V1 4029] ALARA ; [V1 4030] dose efficace de carrière < 600 mSv, universelle (RAD_CAREER_LIMIT_USV, seuil critique) ; [V1 4031] SPE de référence < 250 mSv (RAD_SPE_EVENT_LIMIT_USV) ; [V1 4032] technologies nucléaires < 20 mSv/an de mission ; Vol. 2 Rev C [V2 6099] surveillance météo spatiale, [V2 6100] alerte radiation (hazard_set_spe_alert). Les limites 30 jours / 1 an (tableau 3 de la norme) n'ont pas pu être lues (erreur 429).
+
+NASA-STD-3001 Volume 1 Rev B (norme complète, non lue : erreur 429)
+https://www.nasa.gov/wp-content/uploads/2020/10/2022-01-05_nasa-std-3001_vol.1_rev._b_final_draft_with_signature_010522.pdf
+-> Référence de la norme, à relire pour le tableau 3 (limites par organe).
+
+NASA - EVA Lunar Surface Concept of Operations (2020) et xEVA System ConOps Rev B (EVA-EXP-0042, 2020)
+https://www.nasa.gov/wp-content/uploads/2020/01/topic_1-_eva_lunar_surface_concept_of_operations.pdf
+https://www.nasa.gov/wp-content/uploads/2017/02/eva-exp-0042_xeva_system_con_ops_rev_b_final_dtd_10192020_ref_doc.pdf
+-> Marche en combinaison en montée, descente et dévers jusqu'à 20 deg (HAZARD_SLOPE_DANGER_HALF_DEG) ; Apollo 15 a traversé ~17 deg.
+
+NASA - Exploration EVA Testing and Analogs (NTRS 20210000827)
+https://ntrs.nasa.gov/api/citations/20210000827/downloads/Exporation%20EVA%20Testing%20and%20Analogs%2020210000827.pdf
+-> xEMU : EVA jusqu'à 8 h, 6 +- 2 h prévues (EVA_MAX_DURATION_S). Un article de novembre 2026 (Satnews) évoque une réduction à 2,5 h pour la combinaison Axiom d'Artemis IV, non confirmée par une source NASA.
+
+NASA - Human Landing Sites / Exploration Zones (NTRS 20160002370, 2016)
+https://ntrs.nasa.gov/api/citations/20160002370/downloads/20160002370.pdf
+-> Zone d'exploration : traverse en surface jusqu'à 100 km de rayon et 2 semaines (EXPLORATION_ZONE_RADIUS_MM) ; sites d'atterrissage/habitat : éviter les pentes de 5 deg et les obstacles de 30 cm.
+
+=== Cible matérielle ===
+
+Ingenuity : Snapdragon 801 sous Linux, logiciel de vol sur F Prime (JPL)
+https://www.slashgear.com/linux-flies-on-mars-onboard-snapdragon-powered-ingenuity-drone-21660377/
+https://directory.elisa.tech/workshops/2024-12-Maryland/F-prime-Michael-Starch-NASA.pdf
+-> Cible Linux ARMv7 du projet (tests sous qemu-arm), idées d'architecture asynchrone (rapport point 1.2).
+
+=== Code ===
+
+LVGL (submodule lvgl/)
+https://github.com/lvgl/lvgl
+-> Bibliothèque d'interface graphique.
+
+marspath, pathfinding de l'équipe (branche origin/pathfinding, app/core/pathfinding)
+-> Géométrie de la grille reprise à l'identique dans app/data/grid (CoarseGrid::configure, GridParams, LocalProjection, kGridSteps).
+
+CRC16-CCITT-FALSE, valeur de contrôle 0x29B1 pour "123456789" (catalogue des CRC)
+https://reveng.sourceforge.io/crc-catalogue/16.htm
+-> Vérification du CRC des trames satellite (core/crc16.hpp).

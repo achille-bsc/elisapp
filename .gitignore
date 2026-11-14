@@ -1,12 +1,17 @@
-elisap
-build/
-build-*/
-nasaSpaceApps
-*.o
-*.d
-.DS_Store
-
-# Static Mars datasets (downloaded/generated, never committed)
-/data/
-.tmp*/
+# Build outputs (objects, deps, tests: all under .tmp*/)
 /elisapp
+.tmp*/
+
+# Mars datasets and zones: downloaded or generated, never committed
+/data/
+
+# Python
+__pycache__/
+*.pyc
+
+# Editors, clangd index, OS
+.cache/
+.vscode/
+.idea/
+*.swp
+.DS_Store

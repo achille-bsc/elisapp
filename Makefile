@@ -118,32 +118,46 @@ re:
 	@$(MAKE) fclean
 	@$(MAKE) build
 
-# Data module must stay MCU friendly (STM32): no heap, stdio, libm, exceptions,
-# no float->double, small stack frames. weather_sim is PC only, not checked.
-EMBED_SRC   = $(filter-out %_sim.cpp,$(sort $(wildcard $(APP_DIR)/data/*.cpp)))
-EMBED_BAD   = malloc|_Znw|_Zna|_Zdl|fopen|fread|fclose|printf|_cos|_sin|_atan|_sqrt|_hypot|__cxa_|__gxx_
+# Data module (app/data) must stay light: no heap, stdio, libm, exceptions,
+# no float->double promotion, small stack frames. sim/ is PC only, unchecked.
+# Objects are .obj so the build progress (which counts *.o) ignores them.
+DATA_DIR    = $(APP_DIR)/data
+DATA_SRC    = $(sort $(shell find $(DATA_DIR) -name '*.cpp' 2>/dev/null))
+EMBED_SRC   = $(filter-out $(DATA_DIR)/sim/%,$(DATA_SRC))
+EMBED_DIR   = $(TMP_DIR)/embed
+NM          = $(if $(CROSS),$(CROSS)nm,nm)
+# Undefined symbols as Linux (ELF) names them: heap, stdio, libm, C++ runtime
+EMBED_BAD   = ^ *U (malloc|calloc|realloc|free|_Zn[wa].*|_Zd[la].*|f?open|fread|fwrite|fclose|f?printf|puts|(a?sin|a?cos|a?tan|atan2|sqrt|exp|log|pow|hypot|floor|ceil|l?round)f?|__cxa_.*|__gxx_.*|_Unwind_.*)$$
 
 check-embedded:
-	@mkdir -p $(TMP_DIR)/embed
+	@mkdir -p $(EMBED_DIR)
+	@rm -f $(EMBED_DIR)/*.obj
 	@for f in $(EMBED_SRC); do \
 	    $(CXX) $(CXXFLAGS) -Os -fno-exceptions -fno-rtti -Wdouble-promotion \
 	        -Wframe-larger-than=512 -I. -I$(APP_DIR) -c $$f \
-	        -o $(TMP_DIR)/embed/$$(basename $$f .cpp).o \
+	        -o $(EMBED_DIR)/$$(echo $$f | tr / _).obj \
 	        || { printf "%b\n" "$(RED)Error compiling $$f!$(DEF_COLOR)"; exit 1; }; \
 	done
-	@if nm -u $(TMP_DIR)/embed/*.o | grep -E -i '$(EMBED_BAD)'; then \
+	@if $(NM) -u $(EMBED_DIR)/*.obj | grep -E '$(EMBED_BAD)'; then \
 	    printf "%b\n" "$(RED)Embedded check failed: heavy symbol above$(DEF_COLOR)"; \
 	    exit 1; \
 	fi
 	@printf "%b\n" "$(GREEN)Embedded check OK (no heap, stdio, libm, exceptions)$(DEF_COLOR)"
 
-# Data module tests (no LVGL/SDL). Optional: make test ZONE=data/zone.bin
+# Data module tests (no LVGL/SDL), with sanitizers. Optional zone made by the
+# python tool: make test ZONE=data/zone.bin [ZONE_FINE=data/ctx_layer.bin]
+# ARM target through qemu:
+#   make test CROSS=arm-linux-gnueabihf- TEST_SAN= \
+#        TEST_RUN="qemu-arm -L /usr/arm-linux-gnueabihf"
+TEST_SAN   ?= -fsanitize=address,undefined -fno-sanitize-recover=all
+TEST_RUN   ?=
+
 test: check-embedded
 	@mkdir -p $(TMP_DIR)
-	@$(CXX) $(CXXFLAGS) -I. -I$(APP_DIR) tests/data_test.cpp \
-	    $(sort $(wildcard $(APP_DIR)/data/*.cpp)) -o $(TMP_DIR)/data_test \
+	@$(CXX) $(CXXFLAGS) $(TEST_SAN) -I. -I$(APP_DIR) tests/data_test.cpp \
+	    $(DATA_SRC) -o $(TMP_DIR)/data_test \
 	    || (printf "%b\n" "$(RED)Error compiling tests!$(DEF_COLOR)" && exit 1)
-	@./$(TMP_DIR)/data_test $(ZONE)
+	@$(TEST_RUN) ./$(TMP_DIR)/data_test $(ZONE) $(ZONE_FINE)
 
 .DELETE_ON_ERROR:
 
