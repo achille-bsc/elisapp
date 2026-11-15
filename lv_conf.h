@@ -55,8 +55,11 @@
 #define LV_USE_STDLIB_SPRINTF LV_STDLIB_BUILTIN
 
 #if LV_USE_STDLIB_MALLOC == LV_STDLIB_BUILTIN
-/** Size of the pool `lv_malloc()` allocates from. Needs to be at least 2kB (2048). */
-#define LV_MEM_SIZE 65536
+/** Size of the pool `lv_malloc()` allocates from. Needs to be at least 2kB (2048).
+ *  256 KiB: the widgets alone used 85 % of 64 KiB, and drawing the stretched
+ *  map picture needs temporary buffers; when they do not fit, LVGL skips the
+ *  picture silently. The Linux target has RAM to spare. */
+#define LV_MEM_SIZE 262144
 
 /** Place the pool at a fixed address instead of allocating it as a normal array.
  *  0: unused.
