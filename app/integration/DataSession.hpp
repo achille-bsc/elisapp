@@ -24,9 +24,17 @@ namespace mars {
 		/// the file is missing or refused: every place is then "unknown terrain".
 		[[nodiscard]] bool loadLandform(const char* path);
 
+		/// Adds a finer relief layer (CTX) over the loaded one: where it has data
+		/// it wins, elsewhere the coarser layer (MOLA) fills in. False if refused.
+		[[nodiscard]] bool addLandformLayer(const char* path);
+
 	private:
+		/// Reads `path` into `words`. Returns its size in bytes, 0 on failure.
+		[[nodiscard]] static std::uint32_t readLayer(const char* path, std::vector<std::uint32_t>& words);
+
 		/// 32-bit words: the data module needs its blobs aligned on 4 bytes.
 		std::vector<std::uint32_t> landform_;
+		std::vector<std::uint32_t> fineLandform_;
 		std::vector<std::uint8_t> weatherCache_;
 	};
 
