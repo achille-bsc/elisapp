@@ -1,11 +1,14 @@
 #include "./hazard.hpp"
 #include "../config.hpp"
 #include "../core/geodesy.hpp"
+#include "../ground/ground.hpp"
 #include "../landform/landform.hpp"
 #include "../radiation/radiation.hpp"
 #include "../weather/weather_model.hpp"
 
 static bool g_spe_alert = false;
+static t_storm g_storms[HAZARD_MAX_STORMS];
+static uint8_t g_storm_count = 0;
 
 // ALARA: caution from RAD_CAUTION_PERCENT of the critical rate
 static constexpr uint32_t RADIATION_CAUTION_USV_DAY =
@@ -58,17 +61,149 @@ uint16_t hazard_radiation_reasons(const t_radiation &rad) {
                                                           : 0);
 }
 
-t_hazard hazard_assess(t_coord coord, uint32_t time_s) {
-  const t_landform land = landform_get(coord);
+// hazard_storm_during() skips a storm farther than its reach + 1/16 of it
+static constexpr uint64_t STORM_REACH_MARGIN_DIV = 16;
+
+static bool storm_is_valid(const t_storm &s) {
+  const auto within = [](int32_t v) {
+    return (v >= -HAZARD_STORM_MAX_DRIFT_MM_S && v <= HAZARD_STORM_MAX_DRIFT_MM_S);
+  };
+  return (coord_is_valid(s.centre) && within(s.drift_east_mm_s) &&
+          within(s.drift_north_mm_s) && s.end_s > s.start_s &&
+          s.end_s - s.start_s <= HAZARD_STORM_MAX_SOLS * MARS_SOL_S);
+}
+
+bool hazard_set_storms(const t_storm *storms, uint8_t count) {
+  if (count > HAZARD_MAX_STORMS || (count && !storms))
+    return (false);
+  for (uint8_t i = 0; i < count; i++)
+    if (!storm_is_valid(storms[i]))
+      return (false);
+  for (uint8_t i = 0; i < count; i++)
+    g_storms[i] = storms[i];
+  g_storm_count = count;
+  return (true);
+}
+
+uint8_t hazard_storm_count() { return (g_storm_count); }
+
+const t_storm *hazard_storm(uint8_t index) {
+  return (index < g_storm_count ? &g_storms[index] : nullptr);
+}
+
+t_coord hazard_storm_centre(const t_storm &storm, uint32_t time_s) {
+  // Before its start it stands at its first place, after its end at its last
+  int64_t dt = time_s > storm.start_s ? int64_t{time_s} - storm.start_s : 0;
+  if (dt > int64_t{storm.end_s} - storm.start_s)
+    dt = int64_t{storm.end_s} - storm.start_s;
+  const int64_t north_mm = int64_t{storm.drift_north_mm_s} * dt;
+  const int64_t east_mm = int64_t{storm.drift_east_mm_s} * dt;
+  int64_t lat = storm.centre.lat_udeg +
+                north_mm * Q16_ONE / int64_t{MM_PER_UDEG_LAT_Q16};
+  if (lat > LAT_MAX_UDEG)
+    lat = LAT_MAX_UDEG;
+  if (lat < -LAT_MAX_UDEG)
+    lat = -LAT_MAX_UDEG;
+  const int64_t lon_mm_q16 = mm_per_udeg_lon_q16(static_cast<int32_t>(lat));
+  const int64_t lon = int64_t{storm.centre.lon_udeg} +
+                      (lon_mm_q16 ? east_mm * Q16_ONE / lon_mm_q16 : 0);
+  return (t_coord{lon_wrap_udeg(lon), static_cast<int32_t>(lat)});
+}
+
+const t_storm *hazard_storm_at(t_coord coord, uint32_t time_s) {
+  for (uint8_t i = 0; i < g_storm_count; i++) {
+    const t_storm &s = g_storms[i];
+    if (time_s >= s.start_s && time_s < s.end_s &&
+        coord_distance_mm(hazard_storm_centre(s, time_s), coord) <= s.radius_mm)
+      return (&s);
+  }
+  return (nullptr);
+}
+
+const t_storm *hazard_storm_near(t_coord coord, uint32_t from_s, uint32_t to_s,
+                                 uint32_t margin_mm) {
+  for (uint8_t i = 0; i < g_storm_count; i++) {
+    const t_storm &s = g_storms[i];
+    const uint32_t start = from_s > s.start_s ? from_s : s.start_s;
+    const uint32_t end = to_s < s.end_s ? to_s : s.end_s - 1;
+    if (start > end)
+      continue;
+    // The planner asks millions of points: skip a storm that cannot drift
+    // that far within the window (|east| + |north| >= its speed, + a margin
+    // for the flat-map distances)
+    const uint64_t drift =
+        uint64_t{static_cast<uint32_t>(s.drift_east_mm_s < 0 ? -s.drift_east_mm_s
+                                                             : s.drift_east_mm_s)} +
+        static_cast<uint32_t>(s.drift_north_mm_s < 0 ? -s.drift_north_mm_s
+                                                     : s.drift_north_mm_s);
+    const uint64_t radius = uint64_t{s.radius_mm} + margin_mm;
+    const uint64_t reach = radius + drift * (end - start);
+    if (coord_distance_mm(hazard_storm_centre(s, start), coord) >
+        reach + reach / STORM_REACH_MARGIN_DIV)
+      continue;
+    for (uint64_t t = start; t <= end; t += HAZARD_STORM_CHECK_S) {
+      const uint32_t at = static_cast<uint32_t>(t);
+      if (coord_distance_mm(hazard_storm_centre(s, at), coord) <= radius)
+        return (&s);
+    }
+    // The last moment of the window, between two checks
+    if (coord_distance_mm(hazard_storm_centre(s, end), coord) <= radius)
+      return (&s);
+  }
+  return (nullptr);
+}
+
+const t_storm *hazard_storm_during(t_coord coord, uint32_t from_s, uint32_t to_s) {
+  return (hazard_storm_near(coord, from_s, to_s, 0));
+}
+
+static uint16_t ground_reasons(const t_ground &ground) {
+  if (!ground.valid)
+    return (0);
+  if (ground.inertia_tiu < GROUND_SOFT_MAX_TIU)
+    return (HAZARD_SOFT_GROUND);
+  return (ground.inertia_tiu < GROUND_DUSTY_MAX_TIU ? HAZARD_DUSTY_GROUND : 0);
+}
+
+uint16_t hazard_ground_reasons(t_coord coord) {
+  return (ground_reasons(ground_get(coord)));
+}
+
+static t_hazard assess(const t_landform &land, uint16_t ground, t_coord coord,
+                       uint32_t time_s) {
   const t_weather wx = weather_estimate(coord, time_s);
-  const t_radiation rad = radiation_from(land, wx);
+  const t_radiation rad = radiation_from(landform_get(coord), wx);
   t_hazard h = {};
+  uint16_t storm = 0;
+  if (const t_storm *s = hazard_storm_at(coord, time_s))
+    // A forecast storm is a danger whatever its strength; strong wind too
+    storm = static_cast<uint16_t>(
+        HAZARD_DUST_STORM | (s->wind_cms > HAZARD_WIND_CMS ? HAZARD_WIND : 0));
   h.reasons = static_cast<uint16_t>(terrain_reasons(land) | weather_reasons(wx) |
-                                    hazard_radiation_reasons(rad) |
+                                    hazard_radiation_reasons(rad) | storm |
+                                    ground |
                                     (g_spe_alert ? HAZARD_SPE_ALERT : 0));
   h.dose_eq_usv_day = rad.dose_eq_usv_day;
   h.level = hazard_level_of(h.reasons);
   return (h);
+}
+
+t_hazard hazard_assess(t_coord coord, uint32_t time_s) {
+  return (assess(landform_get(coord), hazard_ground_reasons(coord), coord, time_s));
+}
+
+t_hazard hazard_assess_clearance(t_coord coord, uint32_t time_s) {
+  t_landform land = landform_get(coord);
+  if (land.near_half_deg > land.slope_half_deg)
+    land.slope_half_deg = land.near_half_deg;
+  const uint32_t clearance_mm = LANDFORM_CLEARANCE_M * MM_PER_M_I;
+  return (assess(land, ground_reasons(ground_softest(coord, clearance_mm)),
+                 coord, time_s));
+}
+
+t_hazard hazard_assess_area(t_coord coord, uint32_t time_s, uint32_t radius_mm) {
+  return (assess(landform_steepest(coord, radius_mm),
+                 ground_reasons(ground_softest(coord, radius_mm)), coord, time_s));
 }
 
 uint32_t hazard_map(const t_grid *grid, uint32_t time_s, uint8_t *levels,
@@ -122,7 +257,17 @@ t_route_hazard hazard_route(const t_coord *points, uint32_t count,
 }
 
 static_assert(sizeof(t_hazard) == 6);
+static_assert(sizeof(t_storm) == 32, "no hidden padding");
+// Storm drift: mm/s times a storm's life, times Q16, stays in 64 bits
+static_assert(int64_t{HAZARD_STORM_MAX_DRIFT_MM_S} * HAZARD_STORM_MAX_SOLS *
+                  MARS_SOL_S <
+              INT64_MAX / Q16_ONE);
+// The reach of a storm over its whole life stays in 64 bits
+static_assert(uint64_t{2} * HAZARD_STORM_MAX_DRIFT_MM_S * HAZARD_STORM_MAX_SOLS *
+                      MARS_SOL_S + UINT32_MAX <
+              UINT64_MAX / 2);
 static_assert(sizeof(t_route_hazard) == 16);
+static_assert(GROUND_SOFT_MAX_TIU < GROUND_DUSTY_MAX_TIU);
 static_assert((HAZARD_DANGER_REASONS & HAZARD_CAUTION_REASONS) == 0,
               "a reason has one level");
 static_assert(RADIATION_CAUTION_USV_DAY < RADIATION_CRITICAL_USV_DAY);

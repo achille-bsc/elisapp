@@ -131,6 +131,6 @@ t_weather weather_get(t_coord coord, uint32_t *time_s) {
 static_assert(WEATHER_CACHE_SLOTS > 0);
 static_assert(weather_cache_bytes(WEATHER_CACHE_SLOTS) <= 8 * 1024,
               "built-in weather cache RAM budget");
-static_assert(WEATHER_SLOT_BYTES == 466);
+static_assert(WEATHER_SLOT_BYTES == 530);
 // The north pole (lat = +90 deg) falls in the partial last row
 static_assert(2 * LAT_MAX_UDEG / WEATHER_CHUNK_UDEG < WEATHER_CHUNK_ROWS);

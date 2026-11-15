@@ -17,6 +17,8 @@ constexpr uint32_t SIM_WIND_LAT_STEP_CMS = 100;
 constexpr uint32_t SIM_DUST_BASE_X40 = 16;
 constexpr uint32_t SIM_DUST_LON_PERIOD = 8;
 
+constexpr uint8_t SIM_WIND_FROM_X256 = 48; // 67.5 deg, ENE
+
 static uint32_t g_sim_time_s = 0;
 
 void weather_sim_set_time(uint32_t time_s) { g_sim_time_s = time_s; }
@@ -37,6 +39,8 @@ static t_weather sim_cell(int32_t lat_deg, uint32_t lon_deg) {
       SIM_WIND_BASE_CMS + (abs_lat % SIM_WIND_LAT_PERIOD) * SIM_WIND_LAT_STEP_CMS);
   cell.dust_x40 =
       static_cast<uint8_t>(SIM_DUST_BASE_X40 + lon_deg % SIM_DUST_LON_PERIOD);
+  // Trade-wind like: from the east-north-east everywhere
+  cell.wind_from_x256 = SIM_WIND_FROM_X256;
   cell.valid = true;
   return (cell);
 }
