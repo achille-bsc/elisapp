@@ -51,6 +51,8 @@ namespace mars::ui {
 			// LVGL keeps user data as void*; the point is only ever read back as const.
 			lv_obj_set_user_data(marker, const_cast<PointOfInterest*>(&point));
 			lv_obj_add_event_cb(marker, onMarkerClicked, LV_EVENT_CLICKED, this);
+			// Presses reach the map too: a drag started on a marker moves the map.
+			lv_obj_set_event_bubble(marker, true);
 			markers_.push_back(marker);
 		}
 
@@ -83,6 +85,9 @@ namespace mars::ui {
 	void MarkerLayer::onMarkerClicked(lv_event_t* event)
 	{
 		auto* const self = static_cast<MarkerLayer*>(lv_event_get_user_data(event));
+		if (self->dragging_ != nullptr && *self->dragging_) {
+			return;
+		}
 		const auto* const point = static_cast<const PointOfInterest*>(lv_obj_get_user_data(lv_event_get_current_target_obj(event)));
 		self->listener_.onPointOfInterestPressed(*point);
 	}

@@ -35,6 +35,10 @@ namespace mars::ui {
 		/// Moves every marker to its pixel under `projection`.
 		void layout(const MapProjection& projection);
 
+		/// While `*dragging` is true, a release on a marker ends a drag of the
+		/// map: it is not a press on the marker. `dragging` must outlive the layer.
+		void setDragFlag(const bool* dragging) noexcept { dragging_ = dragging; }
+
 	private:
 		static void onMarkerClicked(lv_event_t* event);
 
@@ -45,6 +49,7 @@ namespace mars::ui {
 		lv_obj_t* destination_;
 		t_position current_{0, 0};
 		t_position destinationPosition_{0, 0};
+		const bool* dragging_{nullptr};
 	};
 
 }
