@@ -12,7 +12,8 @@ namespace mars::ui {
 		constexpr std::int32_t kSegmentPadding = 22;
 
 		/// Segment titles, indexed by MapLayer.
-		constexpr std::array<const char*, kMapLayerCount> kTitles{"Terrain", "Weather", "Risk"};
+		constexpr std::array<const char*, kMapLayerCount> kTitles{
+			LV_SYMBOL_IMAGE "  Terrain", LV_SYMBOL_SHUFFLE "  Weather", LV_SYMBOL_WARNING "  Risk", LV_SYMBOL_CHARGE "  Radiation"};
 
 	}
 

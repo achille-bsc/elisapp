@@ -9,8 +9,9 @@ namespace mars::ui {
 		Terrain,
 		Weather,
 		Risk,
+		Radiation,
 	};
 
-	inline constexpr std::uint8_t kMapLayerCount = 3;
+	inline constexpr std::uint8_t kMapLayerCount = 4;
 
 }
