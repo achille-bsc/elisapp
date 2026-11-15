@@ -1,17 +1,18 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 
+#include "core/storage/IFileMapper.hpp"
+
 namespace mars {
 
-	/// Owns the memory lent to the data module (relief layer, weather cache) and
-	/// connects its weather link. Create exactly one, before anything reads the
-	/// data module, and keep it alive as long as the application runs.
-	class DataSession {
+	/// Memory-maps the data files for the data module and sets its weather
+	/// link. Exactly one, alive as long as the application.
+	class DataSession final : public IFileMapper {
 	public:
-		/// Radio link to the weather satellite: same contract as the data
-		/// module's t_sat_link.
+		/// Same contract as the data module's t_sat_link.
 		using WeatherLink = std::uint16_t (*)(const std::uint8_t* request, std::uint16_t requestSize,
 			std::uint8_t* response, std::uint16_t responseCapacity);
 
@@ -20,21 +21,31 @@ namespace mars {
 		DataSession& operator=(const DataSession&) = delete;
 		~DataSession();
 
-		/// Loads the relief layer file made by tools/fetch_landform.py. False if
-		/// the file is missing or refused: every place is then "unknown terrain".
-		[[nodiscard]] bool loadLandform(const char* path);
+		/// False if the file is missing or refused (same for the others).
+		[[nodiscard]] bool addReliefLayer(const char* path);
 
-		/// Adds a finer relief layer (CTX) over the loaded one: where it has data
-		/// it wins, elsewhere the coarser layer (MOLA) fills in. False if refused.
-		[[nodiscard]] bool addLandformLayer(const char* path);
+		[[nodiscard]] bool addImageryLayer(const char* path);
+
+		[[nodiscard]] bool setGround(const char* path);
+
+		[[nodiscard]] const void* mapFile(const char* path, std::uint32_t& size) override;
+
+		/// Empties the weather cache: the link is asked again.
+		void refreshWeather();
 
 	private:
-		/// Reads `path` into `words`. Returns its size in bytes, 0 on failure.
-		[[nodiscard]] static std::uint32_t readLayer(const char* path, std::vector<std::uint32_t>& words);
+		struct Mapping {
+			void* address;
+			std::size_t size;
+		};
 
-		/// 32-bit words: the data module needs its blobs aligned on 4 bytes.
-		std::vector<std::uint32_t> landform_;
-		std::vector<std::uint32_t> fineLandform_;
+		[[nodiscard]] bool addLayer(const char* path, bool (*add)(const void* blob, std::uint32_t size));
+
+		/// Upper bound of one file, so the data module's 32-bit sizes hold.
+		static constexpr std::size_t kMaxFileBytes = std::size_t{1} << 30U;
+
+		WeatherLink link_;
+		std::vector<Mapping> mappings_;
 		std::vector<std::uint8_t> weatherCache_;
 	};
 

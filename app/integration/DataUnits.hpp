@@ -38,5 +38,7 @@ namespace mars {
 	static_assert(static_cast<HazardReasons>(HazardReason::EvaTooLong) == HAZARD_EVA_TOO_LONG);
 	static_assert(static_cast<HazardReasons>(HazardReason::BeyondZone) == HAZARD_BEYOND_ZONE);
 	static_assert(static_cast<HazardReasons>(HazardReason::DoseBudget) == HAZARD_DOSE_BUDGET);
+	static_assert(static_cast<HazardReasons>(HazardReason::SoftGround) == HAZARD_SOFT_GROUND);
+	static_assert(static_cast<HazardReasons>(HazardReason::DustyGround) == HAZARD_DUSTY_GROUND);
 
 }

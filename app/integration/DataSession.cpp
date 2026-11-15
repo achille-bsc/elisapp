@@ -1,84 +1,92 @@
 #include "integration/DataSession.hpp"
 
-#include <cstddef>
-#include <cstdio>
-#include <memory>
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 #include "data/data.hpp"
 #include "integration/Tuning.hpp"
 
 namespace mars {
 
-	namespace {
-
-		/// Upper bound on the relief file, to keep memory use predictable.
-		constexpr long kMaxLandformBytes = 64L * 1024L * 1024L;
-
-	}
-
 	DataSession::DataSession(WeatherLink link)
-		: weatherCache_(weather_cache_bytes(tuning::kWeatherCacheSlots))
+		: link_{link}
+		, weatherCache_(weather_cache_bytes(tuning::kWeatherCacheSlots))
 	{
 		landform_clear();
-		weather_set_link(link);
+		imagery_clear();
+		weather_set_link(link_);
 		weather_set_cache(weatherCache_.data(), static_cast<std::uint32_t>(weatherCache_.size()));
 	}
 
 	DataSession::~DataSession()
 	{
-		// The data module must not keep pointers into the buffers freed here.
+		// The data module must not keep pointers into the pages unmapped here.
 		landform_clear();
+		imagery_clear();
+		static_cast<void>(ground_set(nullptr, 0));
 		weather_set_cache(nullptr, 0);
 		weather_set_link(nullptr);
+		for (const Mapping& mapping : mappings_) {
+			munmap(mapping.address, mapping.size);
+		}
 	}
 
-	std::uint32_t DataSession::readLayer(const char* path, std::vector<std::uint32_t>& words)
+	const void* DataSession::mapFile(const char* path, std::uint32_t& size)
 	{
-		words.clear();
-		const auto close = [](std::FILE* file) { std::fclose(file); };
-		const std::unique_ptr<std::FILE, decltype(close)> file{std::fopen(path, "rb"), close};
-		if (!file || std::fseek(file.get(), 0, SEEK_END) != 0) {
-			return 0;
+		size = 0;
+		const int fd = open(path, O_RDONLY | O_CLOEXEC);
+		if (fd < 0) {
+			return nullptr;
 		}
-		const long size = std::ftell(file.get());
-		if (size <= 0 || size > kMaxLandformBytes || std::fseek(file.get(), 0, SEEK_SET) != 0) {
-			return 0;
+		struct stat info{};
+		void* address = MAP_FAILED;
+		if (fstat(fd, &info) == 0 && info.st_size > 0 && static_cast<std::size_t>(info.st_size) <= kMaxFileBytes) {
+			address = mmap(nullptr, static_cast<std::size_t>(info.st_size), PROT_READ, MAP_PRIVATE, fd, 0);
 		}
-		const auto bytes = static_cast<std::size_t>(size);
-		words.resize((bytes + sizeof(std::uint32_t) - 1) / sizeof(std::uint32_t));
-		if (std::fread(words.data(), 1, bytes, file.get()) != bytes) {
-			words.clear();
-			return 0;
+		close(fd);  // the mapping keeps the file
+		if (address == MAP_FAILED) {
+			return nullptr;
 		}
-		return static_cast<std::uint32_t>(bytes);
+		mappings_.push_back({address, static_cast<std::size_t>(info.st_size)});
+		size = static_cast<std::uint32_t>(info.st_size);
+		return address;
 	}
 
-	bool DataSession::loadLandform(const char* path)
+	bool DataSession::addLayer(const char* path, bool (*add)(const void* blob, std::uint32_t size))
 	{
-		// Every layer goes: the fine one would point into a freed buffer otherwise.
-		landform_clear();
-		fineLandform_.clear();
-		const std::uint32_t bytes = readLayer(path, landform_);
-		if (bytes == 0 || !landform_init(landform_.data(), bytes)) {
-			landform_clear();
-			landform_.clear();
+		std::uint32_t size = 0;
+		const void* const blob = mapFile(path, size);
+		if (blob == nullptr) {
+			return false;
+		}
+		if (!add(blob, size)) {
+			munmap(mappings_.back().address, mappings_.back().size);
+			mappings_.pop_back();
 			return false;
 		}
 		return true;
 	}
 
-	bool DataSession::addLandformLayer(const char* path)
+	bool DataSession::addReliefLayer(const char* path)
 	{
-		// One fine layer at a time: replacing it must not leave a dangling one.
-		if (!fineLandform_.empty()) {
-			return false;
-		}
-		const std::uint32_t bytes = readLayer(path, fineLandform_);
-		if (bytes == 0 || !landform_add_layer(fineLandform_.data(), bytes)) {
-			fineLandform_.clear();
-			return false;
-		}
-		return true;
+		return addLayer(path, landform_add_layer);
+	}
+
+	bool DataSession::addImageryLayer(const char* path)
+	{
+		return addLayer(path, imagery_add_layer);
+	}
+
+	bool DataSession::setGround(const char* path)
+	{
+		return addLayer(path, ground_set);
+	}
+
+	void DataSession::refreshWeather()
+	{
+		weather_set_link(link_);  // flushes the cache
 	}
 
 }

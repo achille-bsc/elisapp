@@ -20,6 +20,7 @@ namespace mars {
 		sample.pressureDeciPascal = data.weather.pressure_dpa;
 		sample.windCmPerSecond = data.weather.wind_cms;
 		sample.dustOpacityX40 = data.weather.dust_x40;
+		sample.windFromX256 = data.weather.wind_from_x256;
 		sample.hasWeather = data.weather.valid;
 		sample.doseMicroSievertPerSol = data.radiation.dose_eq_usv_day;
 		sample.hasRadiation = data.radiation.valid;

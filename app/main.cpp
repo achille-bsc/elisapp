@@ -11,8 +11,11 @@
 #include "core/mission/JsonMissionRepository.hpp"
 #include "core/poi/JsonPointOfInterestRepository.hpp"
 #include "data/data.hpp"
-#include "data/sim/weather_sim.hpp"
+#include "core/site/JsonMissionSiteRepository.hpp"
+#include "data/sim/weather_mcd.hpp"
 #include "integration/DataEnvironment.hpp"
+#include "integration/DataStormForecast.hpp"
+#include "ui/PhotoLibrary.hpp"
 #include "integration/DataSession.hpp"
 #include "integration/MarspathRoutePlanner.hpp"
 #include "integration/Tuning.hpp"
@@ -26,7 +29,11 @@
 
 namespace {
 
-	constexpr mars::t_position kBase{mars::tuning::kBaseLatitudeE7, mars::tuning::kBaseLongitudeE7};
+	constexpr mars::MissionSite kFallbackSite{
+		"Octavia E. Butler Landing", "Perseverance landing site.",
+		{mars::tuning::kBaseLatitudeE7, mars::tuning::kBaseLongitudeE7}, 0.0, mars::tuning::kStartLocalHour,
+		mars::tuning::kViewRadiusM,
+	};
 
 	constexpr const char* kUsage =
 		"usage: elisapp [--time-scale N] [--demo]\n"
@@ -59,16 +66,43 @@ namespace {
 		return options;
 	}
 
-	/// Mission time at which the base reads kStartLocalHour LMST.
-	[[nodiscard]] std::uint32_t startTime() noexcept
+	/// Mission time at which the base reads the site's start hour (LMST).
+	[[nodiscard]] std::uint32_t startTime(const mars::MissionSite& site) noexcept
 	{
-		const t_coord base = coord_from_e7_east(kBase.latitudeE7, kBase.longitudeEastE7);
+		const t_coord base = coord_from_e7_east(site.position.latitudeE7, site.position.longitudeEastE7);
 		const std::uint32_t offset = local_solar_time_s(base, 0);
-		return (mars::tuning::kStartLocalHour * MARS_HOUR_S + MARS_SOL_S - offset) % MARS_SOL_S;
+		return (site.startLocalHour * MARS_HOUR_S + MARS_SOL_S - offset) % MARS_SOL_S;
 	}
 
-	/// Under guidance the simulated receiver walks the route; it stops when
-	/// the guidance ends. With a real receiver this listener does nothing.
+	void loadData(mars::DataSession& session, char* weatherSource, std::size_t weatherSourceSize)
+	{
+		std::uint32_t relief = 0;
+		for (const char* path : mars::tuning::kReliefPaths) {
+			relief += session.addReliefLayer(path) ? 1U : 0U;
+		}
+		if (relief == 0) {
+			std::fputs("elisapp: no relief in data/ (run `make data`): every place is unknown terrain\n", stderr);
+		}
+		std::uint32_t images = 0;
+		for (const char* path : mars::tuning::kImageryPaths) {
+			images += session.addImageryLayer(path) ? 1U : 0U;
+		}
+		if (!session.setGround(mars::tuning::kGroundPath)) {
+			std::fprintf(stderr, "elisapp: cannot read %s (run `make data`): no soft ground known\n", mars::tuning::kGroundPath);
+		}
+		std::uint32_t size = 0;
+		const void* const weather = session.mapFile(mars::tuning::kWeatherPath, size);
+		if (weather != nullptr && weather_mcd_set_blob(weather, size)) {
+			std::snprintf(weatherSource, weatherSourceSize, "Mars Climate Database v6.2, Ls %u\xC2\xB0.",
+				static_cast<unsigned>((weather_mcd_solar_longitude_ddeg() + 5U) / 10U));
+		} else {
+			std::fprintf(stderr, "elisapp: cannot read %s (run `make data`): no weather\n", mars::tuning::kWeatherPath);
+			std::snprintf(weatherSource, weatherSourceSize, "No weather data loaded.");
+		}
+		std::printf("elisapp: %u relief and %u image layers loaded\n", static_cast<unsigned>(relief), static_cast<unsigned>(images));
+	}
+
+	/// The simulated receiver walks the guided route.
 	class GpsSimNavigation final : public mars::ui::INavigationListener {
 	public:
 		explicit GpsSimNavigation(const mars::IMissionClock& clock) noexcept
@@ -92,7 +126,6 @@ namespace {
 		mars::ui::MainScreen& screen;
 	};
 
-	/// Reads the receiver's packet and hands the decoded position to the screen.
 	void onGpsTimer(lv_timer_t* timer)
 	{
 		auto* const loop = static_cast<Loop*>(lv_timer_get_user_data(timer));
@@ -102,9 +135,18 @@ namespace {
 		}
 	}
 
+	struct Refresh {
+		const mars::IMissionClock& clock;
+		mars::DataSession& session;
+		mars::ui::MainScreen& screen;
+	};
+
 	void onBackgroundTimer(lv_timer_t* timer)
 	{
-		static_cast<mars::ui::MainScreen*>(lv_timer_get_user_data(timer))->refreshBackground();
+		auto* const refresh = static_cast<Refresh*>(lv_timer_get_user_data(timer));
+		weather_mcd_set_time(refresh->clock.nowSeconds());
+		refresh->session.refreshWeather();
+		refresh->screen.refreshBackground();
 	}
 
 }
@@ -126,41 +168,49 @@ int main(int argc, char** argv)
 		return EXIT_FAILURE;
 	}
 
-	const std::uint32_t start = startTime();
+	mars::JsonMissionSiteRepository sites{kFallbackSite};
+	if (!sites.load(mars::tuning::kMissionSitePath)) {
+		std::fprintf(stderr, "elisapp: cannot read %s, the mission starts at %s\n", mars::tuning::kMissionSitePath,
+			kFallbackSite.name);
+	}
+	const mars::MissionSite& site = sites.site();
+
+	const std::uint32_t start = startTime(site);
 	mars::platform::SteadyMissionClock clock{start, options->timeScale};
 
-	mars::DataSession session{weather_sat_sim};
-	// The simulated satellite stamps its forecasts with the start time.
-	weather_sim_set_time(start);
-	if (!session.loadLandform(mars::tuning::kLandformPath)) {
-		std::fprintf(stderr, "elisapp: cannot read %s (run `make data`): every place is unknown terrain\n",
-			mars::tuning::kLandformPath);
-	} else if (session.addLandformLayer(mars::tuning::kFineLandformPath)) {
-		std::printf("elisapp: fine relief layer %s loaded over MOLA\n", mars::tuning::kFineLandformPath);
-	}
+	mars::DataSession session{weather_sat_mcd};
+	weather_mcd_set_time(start);
+	static char weatherSource[96];
+	loadData(session, weatherSource, sizeof weatherSource);
 
 	mars::JsonPointOfInterestRepository points;
-	if (!points.load(mars::tuning::kPointsOfInterestPath)) {
+	if (!points.load(mars::tuning::kZonePointsOfInterestPath) && !points.load(mars::tuning::kPointsOfInterestPath)) {
 		std::fprintf(stderr, "elisapp: cannot read %s, no point of interest shown\n", mars::tuning::kPointsOfInterestPath);
 	}
 	mars::JsonMissionRepository missions;
-	if (!missions.load(mars::tuning::kMissionsPath)) {
+	if (!missions.load(mars::tuning::kZoneMissionsPath) && !missions.load(mars::tuning::kMissionsPath)) {
 		std::fprintf(stderr, "elisapp: cannot read %s, no mission proposed\n", mars::tuning::kMissionsPath);
 	}
+	mars::DataStormForecast storms;
+	if (storms.load(mars::tuning::kStormForecastPath, start)) {
+		std::printf("elisapp: storm forecast loaded: %s\n", storms.source());
+	}
+	mars::ui::PhotoLibrary photos{session};
 	mars::MarspathRoutePlanner routes;
 	mars::DataEnvironment environment;
-	mars::ui::data_background backgrounds{clock};
+	mars::ui::data_background backgrounds{clock, weatherSource};
 
-	gps_sim_init(kBase);
+	gps_sim_init(site.position);
 	GpsSimNavigation navigation{clock};
-	const mars::t_position first = mars::PositionPacket::decode(gps_sim_packet(clock.nowSeconds())).value_or(kBase);
+	const mars::t_position first = mars::PositionPacket::decode(gps_sim_packet(clock.nowSeconds())).value_or(site.position);
 
 	mars::ui::MainScreen screen{
-		lv_screen_active(), {points, missions, routes, backgrounds, environment, clock, navigation}, first,
+		lv_screen_active(), {points, missions, routes, backgrounds, backgrounds, site, environment, storms, photos, clock, navigation}, first,
 	};
 	Loop loop{clock, screen};
+	Refresh refresh{clock, session, screen};
 	lv_timer_create(onGpsTimer, mars::tuning::kGpsPeriodMs, &loop);
-	lv_timer_create(onBackgroundTimer, mars::tuning::kBackgroundRefreshMs, &screen);
+	lv_timer_create(onBackgroundTimer, mars::tuning::kBackgroundRefreshMs, &refresh);
 
 	if (options->demo && (!screen.openMission(0) || !screen.startGuidance())) {
 		std::fputs("elisapp: --demo: no route to the first mission\n", stderr);

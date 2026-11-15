@@ -2,46 +2,79 @@
 
 #include <cstdint>
 
-// Settings of the glue between the data module, the pathfinding and the
-// front. Sources: SOURCES.txt at the repo root.
+#include "data/landform/landform.hpp"
+
+// Application settings. Sources: SOURCES.txt.
 namespace mars::tuning {
 
-	/// Relief layer made by tools/fetch_landform.py (see `make data`).
-	inline constexpr const char* kLandformPath = "data/landform_zone.bin";
+	inline constexpr const char* kMissionSitePath = "assets/mission_site.json";
 
-	/// Optional finer relief (CTX DTM) over it, see tools/fetch_landform.py --grid.
-	inline constexpr const char* kFineLandformPath = "data/ctx_layer.bin";
+	/// Data files of `make data`, finest first; missing ones are skipped.
+	inline constexpr const char* kReliefPaths[] = {
+		"data/relief_hirise.bin",  // HiRISE DTM, 2 m
+		"data/relief_ctx.bin",     // CTX DTM, 20 m
+		"data/relief_hrsc.bin",    // HRSC-MOLA blend, 200 m
+		"data/relief_mola.bin",    // MOLA MEGDR, 1.85 km
+	};
 
+	inline constexpr const char* kImageryPaths[] = {
+		"data/imagery_ctx.bin",     // CTX orthomosaic, 6 m
+		"data/imagery_themis.bin",  // THEMIS Day IR, 100 m
+	};
+
+	inline constexpr const char* kGroundPath = "data/ground_ti.bin";
+
+	inline constexpr const char* kWeatherPath = "data/weather_mcd.bin";
+
+	/// Zone places and missions, else the curated ones of assets/.
+	inline constexpr const char* kZonePointsOfInterestPath = "data/points_of_interest.json";
+	inline constexpr const char* kZoneMissionsPath = "data/missions.json";
 	inline constexpr const char* kPointsOfInterestPath = "assets/points_of_interest.json";
 	inline constexpr const char* kMissionsPath = "assets/missions.json";
 
-	/// The simulated GPS starts at the Perseverance landing site (Octavia E.
-	/// Butler Landing, see assets/points_of_interest.json), where the crew's
-	/// base stands in this scenario.
+	inline constexpr const char* kStormForecastPath = "assets/storm_forecast.json";
+
+	/// Fallback site: Octavia E. Butler Landing, 08:00, 3 km view.
 	inline constexpr std::int32_t kBaseLatitudeE7 = 184'447'000;
 	inline constexpr std::uint32_t kBaseLongitudeE7 = 774'508'000;
 
-	/// The mission clock starts at this local mean solar time at the base:
-	/// 08:00, the morning start of a surface work day.
 	inline constexpr std::uint32_t kStartLocalHour = 8;
 
-	/// A position packet is read this often (1 Hz, like a common GNSS receiver).
+	inline constexpr std::uint32_t kViewRadiusM = 3'000;
+
+	/// 1 Hz, like a common GNSS receiver.
 	inline constexpr std::uint32_t kGpsPeriodMs = 1'000;
 
-	/// The weather and risk layers follow the time of day: redrawn this often.
+	/// Time layers redrawn and weather asked again this often.
 	inline constexpr std::uint32_t kBackgroundRefreshMs = 60'000;
 
-	/// Weather cache given to the data module: 64 chunks of 8 x 8 degrees
-	/// (30 KiB) hold the whole map on screen plus a route, so neither the map
-	/// rendering nor the planner evicts the other's chunks.
+	/// 64 chunks (30 KiB): the map and a route without evicting each other.
 	inline constexpr std::uint32_t kWeatherCacheSlots = 64;
 
-	/// Pressurised rover cruise speed: NASA's Space Exploration Vehicle concept
-	/// drives at about 10 km/h.
+	/// Pressurised rover, ~10 km/h (NASA Space Exploration Vehicle).
 	inline constexpr std::uint32_t kRoverSpeedMmPerSecond = 2'778;
 
-	/// The planner stops polishing the route after this long, so the screen
-	/// never freezes for more than a moment.
+	/// No danger within this distance of a planned path (team rule).
+	inline constexpr std::uint32_t kClearanceMm = LANDFORM_CLEARANCE_M * 1'000;
+
+	/// About one waypoint every 60 m (team choice).
+	inline constexpr std::uint32_t kWaypointSpacingMm = 60'000;
+
+	/// Coarse grid cell; finer cells are tried when no way is found.
+	inline constexpr double kGridCellM = 30.0;
+
+	inline constexpr double kFineGridCellM = 15.0;
+	inline constexpr std::uint32_t kFineGridMaxSide = 1024;
+
+	/// Path check step, far below the clearance.
+	inline constexpr double kPathCheckStepM = 10.0;
+
+	/// A storm blocks a point from the straight-line walking time to it,
+	/// plus this share for detours and a margin.
+	inline constexpr std::uint32_t kStormDetourPercent = 60;
+	inline constexpr std::uint32_t kStormMarginSeconds = 1'800;
+
+	/// Local optimisation budget.
 	inline constexpr double kPlanningBudgetMs = 1'500.0;
 
 }
