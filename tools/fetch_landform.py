@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build a landform layer (format v3) read by app/data/landform.
+"""Build a landform layer (format v5) read by app/data/landform.
 
 Two sources, mixed at run time by landform_add_layer (finest layer first):
 
@@ -36,7 +36,7 @@ ROW_BYTES = WIDTH * 2         # int16, big endian, row 0 = 90N, col 0 = 0E
 # MEGDR reference sphere (label A_AXIS_RADIUS): the pixel size in metres
 MARS_RADIUS_KM = 3396.0
 # keep in sync with landform.hpp
-MAGIC, VERSION, MAX_SIDE = 0x414C4F4D, 3, 16384
+MAGIC, VERSION, MAX_SIDE = 0x414C4F4D, 5, 16384
 NODATA_M = -32768             # LANDFORM_NODATA_M: hole, next layer is read
 UDEG_PER_DEG = 1_000_000
 STEP_UDEG = UDEG_PER_DEG // PPD
@@ -162,17 +162,22 @@ def write_layer(path, grid, west_udeg, north_udeg, step_udeg):
         for c in range(width):
             slopes.append(0 if grid[r][c] == NODATA_M
                           else slope_of(grid, r, c, dx_m, dy_m))
-    # Same layout as t_landform_header (24 bytes) in landform.hpp
-    header = struct.pack("<IIiIHHHH", MAGIC, west_udeg, north_udeg, step_udeg,
-                         width, height, VERSION, 0)
+    # Same layout as t_landform_header (28 bytes) in landform.hpp: whole
+    # metres (unit 0), base 0
+    header = struct.pack("<IIiIHHHHi", MAGIC, west_udeg, north_udeg, step_udeg,
+                         width, height, VERSION, 0, 0)
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     with open(path, "wb") as f:
         f.write(header)
         for line in grid:
             line.tofile(f)
         f.write(slopes)
+        # v5 clearance slope: these cells (MOLA or a resampled DTM) are
+        # treated as wider than the 50 m clearance; tools/fetch_site.py
+        # computes the real one
+        f.write(slopes)
     print(f"{path}: {width}x{height} cells of {step_udeg} udeg, "
-          f"{len(header) + width * height * 3} bytes")
+          f"{len(header) + width * height * 4} bytes")
 
 
 def main():
