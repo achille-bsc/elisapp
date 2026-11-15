@@ -58,6 +58,7 @@ public:
     }
 
     [[nodiscard]] double partialBlockPenalty() const noexcept { return p_.partial_block_penalty; }
+    [[nodiscard]] double cautionPenalty() const noexcept { return p_.caution_penalty; }
 
 private:
     CostParams p_;

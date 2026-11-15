@@ -22,6 +22,10 @@ double PathOptimizer::segmentCost(const PathNode& u, const PathNode& v) const no
         deviation_sq = 0.5 * (du * du + dv * dv);
     }
     double c = cost_.edge(d, zv - zu, deviation_sq);
+    if (cost_.cautionPenalty() > 0.0) {
+        // Crossing a caution area is worth it only for a real shortcut
+        c += cost_.cautionPenalty() * probe_.caution((u.pos() + v.pos()) * 0.5) * d;
+    }
     if (band_.active()) {
         c += cost_.bandPenalty(std::max(band_.excess(zu), band_.excess(zv)), d);
     }

@@ -13,7 +13,7 @@
 namespace marspath::detail {
 
 // Internal: coarse grid aligned with the start->goal axis, evaluated lazily.
-// Memory: 5 bytes per cell (float elevation + packed state/hazard count).
+// Memory: 6 bytes per cell (float elevation + packed state/hazard/caution counts).
 
 class CoarseGrid {
 public:
@@ -43,7 +43,11 @@ public:
     [[nodiscard]] double elevation(Index idx) const noexcept { return static_cast<double>(z_[idx]); }
     /// Fraction of the 9 probes that fell in a hazard (0..1).
     [[nodiscard]] double hazardFraction(Index idx) const noexcept {
-        return static_cast<double>(cells_[idx] >> 2U) / 9.0;
+        return static_cast<double>((cells_[idx] >> kHitsShift) & kCountMask) / 9.0;
+    }
+    /// Fraction of the 9 probes that fell in a caution area (0..1).
+    [[nodiscard]] double cautionFraction(Index idx) const noexcept {
+        return static_cast<double>((cells_[idx] >> kCautionShift) & kCountMask) / 9.0;
     }
     /// Marks the cells around p as blocked (repair after a local dead end).
     void blockAround(Vec2 p);
@@ -54,10 +58,13 @@ private:
     static constexpr std::uint8_t kUnknown = 0;
     static constexpr std::uint8_t kFree = 1;
     static constexpr std::uint8_t kBlocked = 2;
-    static constexpr std::uint8_t kStateMask = 3;
+    static constexpr std::uint16_t kStateMask = 3;
+    static constexpr unsigned kHitsShift = 2;
+    static constexpr unsigned kCautionShift = 6;
+    static constexpr std::uint16_t kCountMask = 0xF;
 
     std::vector<float> z_;
-    std::vector<std::uint8_t> cells_;  // bits 0-1: state, bits 2-5: hazard probes hit
+    std::vector<std::uint16_t> cells_;  // bits 0-1: state, 2-5: hazard probes, 6-9: caution probes
     const EnvironmentProbe* probe_{nullptr};
     Vec2 origin_{};
     Vec2 u_{};

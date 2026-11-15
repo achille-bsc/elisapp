@@ -14,7 +14,7 @@ bool isValid(const PlannerParams& p) noexcept {
            positive(p.elevation.band_step_m) && nonNegative(p.elevation.deviation_weight) &&
            positive(p.cost.ascent_weight) && nonNegative(p.cost.descent_weight) && positive(p.cost.max_slope) &&
            nonNegative(p.cost.slope_penalty) && nonNegative(p.cost.turn_weight) &&
-           nonNegative(p.cost.partial_block_penalty) && p.grid.max_side >= 8U && positive(p.grid.min_cell_m) &&
+           nonNegative(p.cost.partial_block_penalty) && nonNegative(p.cost.caution_penalty) && p.grid.max_side >= 8U && positive(p.grid.min_cell_m) &&
            positive(p.grid.corridor_ratio) && nonNegative(p.grid.corridor_min_m) &&
            nonNegative(p.local.sample_step_m) && positive(p.local.offset_step_m) &&
            p.local.max_offset_m >= p.local.offset_step_m && nonNegative(p.local.optim_step_m) &&

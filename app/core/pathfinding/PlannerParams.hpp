@@ -30,6 +30,7 @@ struct CostParams {
     double slope_penalty{2000.0};       ///< Weight of the excess-slope penalty.
     double turn_weight{20.0};           ///< Weight of heading changes (local stage).
     double partial_block_penalty{3.0};  ///< Extra cost of partly hazardous coarse cells.
+    double caution_penalty{4.0};        ///< Extra cost of 1 m in a caution area (x distance).
 };
 
 /// Global coarse search (A* on a lazily evaluated grid aligned with the route).
