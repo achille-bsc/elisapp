@@ -7,19 +7,25 @@ namespace mars::ui {
 
 	namespace {
 
-		constexpr std::int32_t kWidth = 4;
+		constexpr std::int32_t kWidth = 5;
+		constexpr std::int32_t kDash = 12;
+		constexpr std::int32_t kDashGap = 8;
 
 	}
 
-	RouteLayer::RouteLayer(lv_obj_t* map)
+	RouteLayer::RouteLayer(lv_obj_t* map, std::uint32_t color, bool dashed)
 		: line_{lv_line_create(map)}
 	{
 		lv_obj_remove_style_all(line_);
 		lv_obj_set_clickable(line_, false);
 		// Fixed size: the points are then plain map pixels, whatever their extent.
 		lv_obj_set_size(line_, lv_pct(100), lv_pct(100));
-		lv_obj_set_style_line_color(line_, lv_color_hex(theme::kOnMap), LV_PART_MAIN);
-		lv_obj_set_style_line_opa(line_, LV_OPA_80, LV_PART_MAIN);
+		lv_obj_set_style_line_color(line_, lv_color_hex(color), LV_PART_MAIN);
+		lv_obj_set_style_line_opa(line_, LV_OPA_90, LV_PART_MAIN);
+		if (dashed) {
+			lv_obj_set_style_line_dash_width(line_, kDash, LV_PART_MAIN);
+			lv_obj_set_style_line_dash_gap(line_, kDashGap, LV_PART_MAIN);
+		}
 		lv_obj_set_style_line_width(line_, kWidth, LV_PART_MAIN);
 		lv_obj_set_style_line_rounded(line_, true, LV_PART_MAIN);
 		widgets::setVisible(line_, false);

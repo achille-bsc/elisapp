@@ -4,6 +4,7 @@
 #include <array>
 #include <cmath>
 #include <cstdlib>
+#include <numbers>
 #include <vector>
 
 #include "ui/Theme.hpp"
@@ -25,13 +26,14 @@ namespace mars::ui {
 		/// Keyboard panning moves the view by this share of its size.
 		constexpr std::int32_t kKeyPanDivisor = 4;
 
-		/// While following, the map recentres once the user is this share of
-		/// the smaller side away from the centre: not on every fix, since
-		/// each recentring computes a new background picture.
+		/// Following: recentre once this share of the view away (not every fix).
 		constexpr std::int32_t kFollowDivisor = 6;
 
+		/// Mean Mars sphere, 3389.5 km (MARS_RADIUS_MM).
+		constexpr double kMetresPerDegree = 3'389'500.0 * std::numbers::pi / 180.0;
+
 		/// Plain fill shown while a layer has no picture, indexed by MapLayer.
-		constexpr std::array<std::uint32_t, kMapLayerCount> kFallbackColors{0x8A4B35, 0x2F7F5F, 0x6E5A86};
+		constexpr std::array<std::uint32_t, kMapLayerCount> kFallbackColors{0x8A4B35, 0x2F7F5F, 0x6E5A86, 0x31688E};
 
 		lv_obj_t* makeRoot(lv_obj_t* parent)
 		{
@@ -45,17 +47,23 @@ namespace mars::ui {
 	}
 
 	MapView::MapView(lv_obj_t* parent, std::span<const PointOfInterest> points, t_position current,
-		IMapBackgroundProvider& backgrounds, IMapListener& mapListener, IPointOfInterestListener& pointListener)
+		IMapBackgroundProvider& backgrounds, const IMapLegendSource& legends, const MapViewListeners& listeners)
 		: backgrounds_{backgrounds}
-		, listener_{mapListener}
+		, legends_{legends}
+		, listener_{listeners.map}
 		, points_{points}
 		, root_{makeRoot(parent)}
-		, route_{root_}
-		, markers_{root_, points, pointListener}
+		, storms_{root_}
+		, route_{root_, theme::kRouteOut, false}
+		, return_{root_, theme::kRouteBack, true}
+		, waypoints_{root_, listeners.navigation}
+		, markers_{root_, points, listeners.points}
+		, legend_{root_}
 		, current_{current}
 	{
 		markers_.setCurrentPosition(current_);
 		markers_.setDragFlag(&dragging_);
+		waypoints_.setDragFlag(&dragging_);
 		lv_obj_add_event_cb(root_, onClicked, LV_EVENT_CLICKED, this);
 		lv_obj_add_event_cb(root_, onPressed, LV_EVENT_PRESSED, this);
 		lv_obj_add_event_cb(root_, onPressing, LV_EVENT_PRESSING, this);
@@ -86,6 +94,16 @@ namespace mars::ui {
 	void MapView::centerOnCurrentPosition()
 	{
 		projection_.setCenter(current_);
+		layout();
+	}
+
+	void MapView::showAround(t_position center, std::uint32_t radiusM)
+	{
+		const MapSize size = projection_.size();
+		const double halfPixels = std::max(1, std::min(size.width, size.height) / 2);
+		const double radiusDegrees = std::max(1.0, static_cast<double>(radiusM)) / kMetresPerDegree;
+		projection_ = MapProjection{center, halfPixels / radiusDegrees, size};
+		following_ = false;
 		layout();
 	}
 
@@ -184,10 +202,37 @@ namespace mars::ui {
 		markers_.layout(projection_);
 	}
 
+	void MapView::setReturnRoute(std::span<const t_position> waypoints)
+	{
+		return_.setRoute(waypoints);
+		return_.layout(projection_);
+	}
+
 	void MapView::clearRoute()
 	{
 		route_.clear();
+		return_.clear();
+		waypoints_.clear();
 		markers_.clearDestination();
+	}
+
+	void MapView::setNavigationPoints(std::span<const NavigationPoint> points)
+	{
+		waypoints_.setPoints(points);
+		waypoints_.layout(projection_);
+		markers_.raiseCrew();
+		legend_.raise();
+	}
+
+	void MapView::setStorms(std::span<const StormView> storms)
+	{
+		storms_.setStorms(storms);
+		storms_.layout(projection_);
+	}
+
+	void MapView::setLegendVisible(bool visible)
+	{
+		legend_.setVisible(visible);
 	}
 
 	void MapView::refreshBackground()
@@ -213,11 +258,15 @@ namespace mars::ui {
 		}
 		lv_image_set_src(image_, source);
 		widgets::setVisible(image_, true);
+		legend_.show(legends_.legend(layer_), kMetresPerDegree / projection_.pixelsPerDegree());
 	}
 
 	void MapView::layout()
 	{
+		storms_.layout(projection_);
 		route_.layout(projection_);
+		return_.layout(projection_);
+		waypoints_.layout(projection_);
 		markers_.layout(projection_);
 		refreshBackground();
 	}
@@ -245,7 +294,10 @@ namespace mars::ui {
 		}
 		MapProjection preview = self->projection_;
 		preview.setCenter(self->centerAfterDrag(drag.x, drag.y));
+		self->storms_.layout(preview);
 		self->route_.layout(preview);
+		self->return_.layout(preview);
+		self->waypoints_.layout(preview);
 		self->markers_.layout(preview);
 	}
 
