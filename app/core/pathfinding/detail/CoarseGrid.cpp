@@ -65,18 +65,22 @@ void CoarseGrid::ensure(Index idx) {
     // 3x3 probes spread over the cell. Blocked if the centre or at least 6/9 probes are
     // hazardous; otherwise passable with a penalty (the local stage handles the rest).
     const double s = cell_m_ / 3.0;
-    std::uint8_t hits = 0;
+    std::uint16_t hits = 0;
+    std::uint16_t cautions = 0;
     bool centre_hit = false;
     for (int di = -1; di <= 1; ++di) {
         for (int dj = -1; dj <= 1; ++dj) {
-            if (probe_->hazard(c + u_ * (di * s) + v_ * (dj * s))) {
+            const RiskLevel level = probe_->level(c + u_ * (di * s) + v_ * (dj * s));
+            if (level == RiskLevel::Danger) {
                 ++hits;
                 centre_hit = centre_hit || (di == 0 && dj == 0);
+            } else if (level == RiskLevel::Caution) {
+                ++cautions;
             }
         }
     }
-    const std::uint8_t state = (centre_hit || hits >= 6) ? kBlocked : kFree;
-    cells_[idx] = static_cast<std::uint8_t>(state | (hits << 2U));
+    const std::uint16_t state = (centre_hit || hits >= 6) ? kBlocked : kFree;
+    cells_[idx] = static_cast<std::uint16_t>(state | (hits << kHitsShift) | (cautions << kCautionShift));
     ++evaluated_;
 }
 
@@ -88,7 +92,7 @@ void CoarseGrid::blockAround(Vec2 p) {
             continue;
         }
         ensure(*n);
-        cells_[*n] = static_cast<std::uint8_t>((cells_[*n] & ~kStateMask) | kBlocked);
+        cells_[*n] = static_cast<std::uint16_t>((cells_[*n] & ~kStateMask) | kBlocked);
     }
 }
 

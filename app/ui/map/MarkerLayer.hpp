@@ -29,22 +29,35 @@ namespace mars::ui {
 		MarkerLayer& operator=(const MarkerLayer&) = delete;
 
 		void setCurrentPosition(t_position position) noexcept { current_ = position; }
+
+		/// Heading cone on the position dot, degrees from north.
+		void setHeading(bool known, std::uint16_t degrees);
 		void setDestination(t_position position);
 		void clearDestination();
+
+		/// Puts the crew's marker back on top (it takes no taps).
+		void raiseCrew() { lv_obj_move_foreground(you_); }
 
 		/// Moves every marker to its pixel under `projection`.
 		void layout(const MapProjection& projection);
 
+		/// While `*dragging` is true, a release on a marker ends a drag of the
+		/// map: it is not a press on the marker. `dragging` must outlive the layer.
+		void setDragFlag(const bool* dragging) noexcept { dragging_ = dragging; }
+
 	private:
 		static void onMarkerClicked(lv_event_t* event);
+		void declutter(const MapProjection& projection);
 
 		IPointOfInterestListener& listener_;
 		std::span<const PointOfInterest> points_;
 		std::vector<lv_obj_t*> markers_;
 		lv_obj_t* you_;
+		lv_obj_t* cone_;
 		lv_obj_t* destination_;
 		t_position current_{0, 0};
 		t_position destinationPosition_{0, 0};
+		const bool* dragging_{nullptr};
 	};
 
 }

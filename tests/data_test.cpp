@@ -2,6 +2,7 @@
 #include "data/core/endian.hpp"
 #include "data/core/fixed_math.hpp"
 #include "data/data.hpp"
+#include "data/sim/weather_mcd.hpp"
 #include "data/sim/weather_sim.hpp"
 #include <algorithm>
 #include <cmath>
@@ -71,7 +72,7 @@ static t_coord zone_cell_centre(uint32_t row, uint32_t col) {
 
 static const t_landform_header ZONE_HEADER = {
     LANDFORM_MAGIC, ZONE_WEST_UDEG, ZONE_NORTH_UDEG,  LANDFORM_MOLA_STEP_UDEG,
-    ZONE_SIDE,      ZONE_SIDE,      LANDFORM_VERSION, 0};
+    ZONE_SIDE,      ZONE_SIDE,      LANDFORM_VERSION, 0, 0};
 
 // Blob in uint32_t words: 4 bytes aligned like a flash
 static std::vector<uint32_t> make_blob(t_landform_header header,
@@ -89,6 +90,7 @@ static std::vector<uint32_t> make_blob(t_landform_header header,
     const bool flat = flat_m != LANDFORM_NODATA_M;
     elevation[i] = flat ? flat_m : zone_elevation(i % header.width);
     slope[i] = flat ? 0 : zone_slope(i / header.width, i % header.width);
+    slope[count + i] = slope[i]; // MOLA cells are wider than the clearance
   }
   return (blob);
 }
@@ -270,8 +272,9 @@ static void test_chunk_roundtrip() {
   in.time_s = 123456789;
   for (uint32_t i = 0; i < WEATHER_CHUNK_CELLS; i++)
     in.cells[i] = {static_cast<uint16_t>(2000 + i), static_cast<uint16_t>(6000 + i),
-                   static_cast<uint16_t>(300 + i), static_cast<uint8_t>(i), true};
-  in.cells[7] = {UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT8_MAX, true}; // limits
+                   static_cast<uint16_t>(300 + i), static_cast<uint8_t>(i),
+                   static_cast<uint8_t>(4 * i), true, 0};
+  in.cells[7] = {UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT8_MAX, UINT8_MAX, true, 0}; // limits
 
   uint8_t frame[WEATHER_RESPONSE_SIZE];
   CHECK(weather_encode_chunk(in, frame, sizeof(frame) - 1) == 0);
@@ -293,6 +296,7 @@ static void test_chunk_roundtrip() {
     CHECK(out.cells[i].pressure_dpa == in.cells[i].pressure_dpa);
     CHECK(out.cells[i].wind_cms == in.cells[i].wind_cms);
     CHECK(out.cells[i].dust_x40 == in.cells[i].dust_x40);
+    CHECK(out.cells[i].wind_from_x256 == in.cells[i].wind_from_x256);
     CHECK(out.cells[i].valid);
   }
 
@@ -764,7 +768,7 @@ constexpr uint32_t FINE_HOLE_FIRST = 100;
 constexpr uint32_t FINE_HOLE_END = 150;
 static const t_landform_header FINE_HEADER = {
     LANDFORM_MAGIC, FINE_WEST_UDEG, FINE_NORTH_UDEG,  FINE_STEP_UDEG,
-    FINE_WIDTH,     FINE_HEIGHT,    LANDFORM_VERSION, 0};
+    FINE_WIDTH,     FINE_HEIGHT,    LANDFORM_VERSION, 0, 0};
 
 static std::vector<uint32_t> g_fine;
 
@@ -1075,6 +1079,299 @@ static void test_tool_layers(const char *path) {
   CHECK(landform_get({72000000, 14000000}).layer == 1);
 }
 
+// v4 layers: elevation = base + raw * unit, bilinear sampling in mm
+static void test_landform_units() {
+  constexpr uint16_t SIDE = 4;
+  constexpr uint32_t STEP = 1000;
+  constexpr uint32_t WEST = 10000000;
+  constexpr int32_t NORTH = 10000000;
+  constexpr uint16_t UNIT_MM = 10; // centimetres
+  constexpr int32_t BASE_M = -2500;
+  const t_landform_header h = {LANDFORM_MAGIC, WEST, NORTH, STEP, SIDE, SIDE, LANDFORM_VERSION, UNIT_MM, BASE_M};
+  const uint32_t count = SIDE * SIDE;
+  const uint32_t size = sizeof(h) + count * LANDFORM_BYTES_PER_CELL;
+  std::vector<uint32_t> blob((size + 3) / 4);
+  uint8_t *bytes = reinterpret_cast<uint8_t *>(blob.data());
+  memcpy(bytes, &h, sizeof(h));
+  int16_t *elevation = reinterpret_cast<int16_t *>(bytes + sizeof(h));
+  // A ramp east: 0, 1.5, 3, 4.5 m above the base; one hole
+  for (uint32_t i = 0; i < count; i++)
+    elevation[i] = static_cast<int16_t>((i % SIDE) * 150);
+  elevation[SIDE * SIDE - 1] = LANDFORM_NODATA_M;
+  CHECK(landform_init(blob.data(), size));
+  const t_coord c00 = {WEST + STEP / 2, NORTH - static_cast<int32_t>(STEP / 2)};
+  const t_landform land = landform_get(c00);
+  CHECK(land.valid && land.elevation_m == BASE_M);
+  const t_landform col1 = landform_get({WEST + STEP + STEP / 2, c00.lat_udeg});
+  // -2498.5 m: half away from zero
+  CHECK(col1.valid && col1.elevation_m == BASE_M + 1);
+  int32_t mm = 0;
+  CHECK(landform_sample_mm(c00, &mm) && mm == BASE_M * 1000);
+  // Half way between the centres of columns 0 and 1: 0.75 m
+  CHECK(landform_sample_mm({WEST + STEP, c00.lat_udeg}, &mm) && mm == BASE_M * 1000 + 750);
+  // Next to the hole: the post under the point stands in for it
+  const t_coord near_hole = {WEST + 3 * STEP + STEP / 4, NORTH - static_cast<int32_t>(3 * STEP + STEP / 4)};
+  CHECK(!landform_get({WEST + 3 * STEP + STEP / 2, NORTH - static_cast<int32_t>(3 * STEP + STEP / 2)}).valid);
+  CHECK(landform_sample_mm({WEST + 3 * STEP + STEP / 2, NORTH - static_cast<int32_t>(2 * STEP + STEP / 2)}, &mm));
+  CHECK(!landform_sample_mm(near_hole, &mm));
+  CHECK(!landform_sample_mm({WEST - 1, c00.lat_udeg}, &mm));
+  // unit 0 = whole metres (v4 default)
+  t_landform_header metres = h;
+  metres.unit_mm = 0;
+  metres.base_m = 0;
+  memcpy(bytes, &metres, sizeof(metres));
+  CHECK(landform_init(blob.data(), size));
+  CHECK(landform_get({WEST + STEP + STEP / 2, c00.lat_udeg}).elevation_m == 150);
+  // A unit or a base that could overflow the 32-bit millimetres is refused
+  t_landform_header huge = h;
+  huge.unit_mm = LANDFORM_MAX_UNIT_MM + 1;
+  memcpy(bytes, &huge, sizeof(huge));
+  CHECK(!landform_init(blob.data(), size));
+  huge = h;
+  huge.base_m = -LANDFORM_MAX_BASE_M - 1;
+  memcpy(bytes, &huge, sizeof(huge));
+  CHECK(!landform_init(blob.data(), size));
+  // The extremes allowed still decode without overflow
+  huge.base_m = LANDFORM_MAX_BASE_M;
+  huge.unit_mm = LANDFORM_MAX_UNIT_MM;
+  memcpy(bytes, &huge, sizeof(huge));
+  CHECK(landform_init(blob.data(), size));
+  CHECK(landform_sample_mm({WEST + 2 * STEP + STEP / 2, c00.lat_udeg}, &mm) &&
+        mm == LANDFORM_MAX_BASE_M * 1000 + 300 * LANDFORM_MAX_UNIT_MM);
+  landform_clear();
+}
+
+static void test_imagery() {
+  constexpr uint16_t W = 3;
+  constexpr uint16_t H = 2;
+  constexpr uint32_t STEP = 2000;
+  constexpr uint32_t WEST = 20000000;
+  constexpr int32_t NORTH = 5000000;
+  const t_imagery_header h = {IMAGERY_MAGIC, WEST, NORTH, STEP, W, H, IMAGERY_VERSION, 0, 0};
+  const uint32_t exact = sizeof(h) + W * H;
+  const uint32_t padded = (exact + 3) / 4 * 4;
+  std::vector<uint32_t> blob(padded / 4);
+  uint8_t *bytes = reinterpret_cast<uint8_t *>(blob.data());
+  memcpy(bytes, &h, sizeof(h));
+  const uint8_t grey[W * H] = {10, 20, IMAGERY_NODATA, 30, 40, 50};
+  memcpy(bytes + sizeof(h), grey, sizeof(grey));
+  imagery_clear();
+  CHECK(!imagery_add_layer(blob.data(), exact - 1));
+  CHECK(!imagery_add_layer(blob.data(), padded + 4));
+  CHECK(imagery_add_layer(blob.data(), padded));
+  CHECK(imagery_layer_count() == 1 && imagery_layer(0)->width == W);
+  uint16_t g = 0;
+  const t_coord p00 = {WEST + STEP / 2, NORTH - static_cast<int32_t>(STEP / 2)};
+  CHECK(imagery_sample(p00, &g) && g == 10 * IMAGERY_GREY_ONE);
+  // Half way to the east neighbour: 15
+  CHECK(imagery_sample({WEST + STEP, p00.lat_udeg}, &g) && g == 15 * IMAGERY_GREY_ONE);
+  // No data under the point: nothing, even with neighbours
+  CHECK(!imagery_sample({WEST + 2 * STEP + STEP / 2, p00.lat_udeg}, &g));
+  CHECK(!imagery_sample({WEST - 1, p00.lat_udeg}, &g));
+  t_imagery_header bad = h;
+  bad.magic = LANDFORM_MAGIC;
+  memcpy(bytes, &bad, sizeof(bad));
+  CHECK(!imagery_add_layer(blob.data(), padded));
+  imagery_clear();
+  CHECK(!imagery_sample(p00, &g));
+}
+
+// The MCD link: hour of the cell's local solar time, unobserved cells
+static void test_weather_mcd() {
+  constexpr uint16_t COLS = 2;
+  constexpr uint16_t ROWS = 1;
+  constexpr uint16_t WEST_COL = 77;
+  constexpr uint16_t SOUTH_ROW = 108; // 18 N
+  const t_weather_mcd_header h = {WEATHER_MCD_MAGIC, WEATHER_MCD_VERSION, WEATHER_MCD_HOURS, 0,
+                                  WEST_COL, SOUTH_ROW, COLS, ROWS, 220, 0};
+  std::vector<uint8_t> blob(sizeof(h) + WEATHER_MCD_HOURS * COLS * ROWS * sizeof(t_weather_mcd_cell));
+  memcpy(blob.data(), &h, sizeof(h));
+  for (uint32_t hour = 0; hour < WEATHER_MCD_HOURS; hour++)
+    for (uint32_t col = 0; col < COLS; col++) {
+      // Column 1 never observed; column 0: 2000 + 10 dK per hour
+      const t_weather_mcd_cell c = {static_cast<uint16_t>(2000 + hour * 10), 6000, 500, 15,
+                                    static_cast<uint8_t>(hour * 8), static_cast<uint8_t>(col == 0), 0};
+      memcpy(blob.data() + sizeof(h) + (hour * COLS + col) * sizeof(c), &c, sizeof(c));
+    }
+  CHECK(!weather_mcd_set_blob(blob.data(), static_cast<uint32_t>(blob.size() - 1)));
+  CHECK(weather_mcd_set_blob(blob.data(), static_cast<uint32_t>(blob.size())));
+  CHECK(weather_mcd_solar_longitude_ddeg() == 220);
+  const t_coord cell = {WEST_COL * UDEG_PER_DEG + UDEG_PER_DEG / 2, 18500000};
+  // Mission time at which the cell centre reads 10:30 local solar time
+  const uint32_t at = (10 * MARS_HOUR_S + MARS_HOUR_S / 2 + MARS_SOL_S - local_solar_time_s(cell, 0)) % MARS_SOL_S;
+  weather_mcd_set_time(at);
+  weather_set_link(weather_sat_mcd);
+  const t_weather w = weather_get(cell);
+  CHECK(w.valid && w.temperature_dk == 2105 && w.dust_x40 == 15);
+  // Wind from 80/256 at 10 h, 88/256 at 11 h: half way
+  CHECK(w.wind_from_x256 == 84);
+  CHECK(!weather_get({(WEST_COL + 1) * UDEG_PER_DEG + UDEG_PER_DEG / 2, 18500000}).valid);
+  CHECK(!weather_get({(WEST_COL + 2) * UDEG_PER_DEG + UDEG_PER_DEG / 2, 18500000}).valid);
+  CHECK(weather_mcd_set_blob(nullptr, 0));
+  weather_set_link(weather_sat_mcd);
+  CHECK(!weather_get(cell).valid);
+  weather_set_link(nullptr);
+}
+
+// Footprint hazard and forecast storms
+static void test_storms_and_area() {
+  load_zone();
+  weather_set_link(nullptr);
+  // Next to the cliff column: the cell itself is gentle, the area sees it
+  const t_coord beside = zone_cell_centre(5, CLIFF_COL - 1);
+  CHECK(!(hazard_assess(beside, 0).reasons & HAZARD_TOO_STEEP));
+  CHECK(hazard_assess_area(beside, 0, LANDFORM_MOLA_STEP_UDEG * 60).reasons & HAZARD_TOO_STEEP);
+  CHECK(!(hazard_assess_area(beside, 0, 1000).reasons & HAZARD_TOO_STEEP));
+
+  const t_coord centre = zone_cell_centre(5, JEZERO_COL);
+  t_storm storm = {centre, 10000, 0, 20000000, 1000, 1000 + 3600, 1000, 120, 0};
+  CHECK(hazard_set_storms(&storm, 1) && hazard_storm_count() == 1);
+  CHECK(!hazard_storm_at(centre, 999));
+  CHECK(hazard_storm_at(centre, 1000) != nullptr);
+  CHECK(hazard_assess(centre, 1000).level == HAZARD_DANGER);
+  CHECK(hazard_assess(centre, 1000).reasons & HAZARD_DUST_STORM);
+  CHECK(!(hazard_assess(centre, 900).reasons & HAZARD_DUST_STORM));
+  // It drifts east 10 m/s: after 3000 s its centre is 30 km east
+  const t_coord later = hazard_storm_centre(storm, 4000);
+  const uint32_t moved = coord_distance_mm(centre, later);
+  CHECK(moved > 29900000 && moved < 30100000 && later.lon_udeg > centre.lon_udeg);
+  CHECK(!hazard_storm_at(centre, 1000 + 3600));
+  // Some time of a window: before the storm, through it, after it
+  CHECK(!hazard_storm_during(centre, 0, 999));
+  CHECK(hazard_storm_during(centre, 0, 1000) != nullptr);
+  CHECK(hazard_storm_during(centre, 900, 5000) != nullptr);
+  CHECK(!hazard_storm_during(centre, 1000 + 3600, UINT32_MAX));
+  CHECK(!hazard_storm_during(centre, 2000, 1500)); // empty window
+  // 25 km east of its start: reached only once it has drifted there
+  const t_coord east = hazard_storm_centre(storm, 1000 + 2500);
+  CHECK(!hazard_storm_during(east, 1000, 1000 + 400));
+  CHECK(hazard_storm_during(east, 1000, 1000 + 700) != nullptr);
+  CHECK(hazard_storm_during(east, 1000 + 2400, 1000 + 2400) != nullptr);
+  // Farther than it can drift within the window: never
+  CHECK(!hazard_storm_during(zone_cell_centre(5, JEZERO_COL + 40), 1000, 1000 + 3599));
+  t_storm bad = storm;
+  bad.end_s = bad.start_s;
+  CHECK(!hazard_set_storms(&bad, 1) && hazard_storm_count() == 1);
+  bad = storm;
+  bad.drift_north_mm_s = HAZARD_STORM_MAX_DRIFT_MM_S + 1;
+  CHECK(!hazard_set_storms(&bad, 1));
+  CHECK(hazard_set_storms(nullptr, 0) && hazard_storm_count() == 0);
+  CHECK(!hazard_storm_at(centre, 1000));
+}
+
+// Ground (thermal inertia): header checks, pixels, the softest within a disc
+static void test_ground() {
+  constexpr uint16_t W = 4;
+  constexpr uint16_t H = 3;
+  constexpr uint32_t STEP = 2000; // ~118 m
+  constexpr uint32_t WEST = 20000000;
+  constexpr int32_t NORTH = 5000000;
+  constexpr uint8_t FIRM = 50;   // 400 tiu
+  constexpr uint8_t SOFT = 10;   // 80 tiu: danger
+  constexpr uint8_t DUSTY = 20;  // 160 tiu: caution
+  const t_ground_header h = {GROUND_MAGIC, WEST, NORTH, STEP, W, H, GROUND_VERSION, 0, 0};
+  const uint32_t exact = sizeof(h) + W * H;
+  const uint32_t padded = (exact + GROUND_ALIGN - 1) / GROUND_ALIGN * GROUND_ALIGN;
+  std::vector<uint32_t> blob(padded / 4 + 1);
+  uint8_t *bytes = reinterpret_cast<uint8_t *>(blob.data());
+  memcpy(bytes, &h, sizeof(h));
+  // Row 0: firm firm soft firm / row 1: firm dusty firm none / row 2: firm
+  const uint8_t inertia[W * H] = {FIRM, FIRM, SOFT, FIRM, FIRM, DUSTY, FIRM, GROUND_NODATA,
+                                  FIRM, FIRM, FIRM, FIRM};
+  memcpy(bytes + sizeof(h), inertia, sizeof(inertia));
+  CHECK(!ground_set(blob.data(), exact - 1));
+  CHECK(!ground_set(blob.data(), padded + GROUND_ALIGN));
+  CHECK(!ground_set(bytes + 1, exact));
+  CHECK(ground_set(blob.data(), exact));
+  CHECK(ground_set(blob.data(), padded));
+  const auto centre = [](uint32_t row, uint32_t col) {
+    return (t_coord{WEST + col * STEP + STEP / 2, NORTH - static_cast<int32_t>(row * STEP + STEP / 2)});
+  };
+  t_ground g = ground_get(centre(0, 2));
+  CHECK(g.valid && g.inertia_tiu == SOFT * GROUND_TIU_PER_STEP);
+  CHECK(!ground_get(centre(1, 3)).valid); // no data
+  CHECK(!ground_get({WEST - 1, NORTH - 1}).valid);
+  CHECK(!ground_get({WEST + 1, NORTH + 1}).valid);
+  CHECK(!ground_get({WEST + W * STEP, NORTH - 1}).valid);
+  CHECK(hazard_ground_reasons(centre(0, 2)) == HAZARD_SOFT_GROUND);
+  CHECK(hazard_ground_reasons(centre(1, 1)) == HAZARD_DUSTY_GROUND);
+  CHECK(hazard_ground_reasons(centre(2, 0)) == 0);
+
+  // The softest within a disc: from the centre of (0, 0), the soft pixel's
+  // near edge is 1.5 pixels (~176 m) east, the dusty one's corner nearer
+  const uint32_t pixel_mm = static_cast<uint32_t>(uint64_t{STEP} * mm_per_udeg_lon_q16(NORTH) >> Q16_SHIFT);
+  CHECK(ground_softest(centre(0, 0), 50000).inertia_tiu == FIRM * GROUND_TIU_PER_STEP);
+  CHECK(ground_softest(centre(0, 0), pixel_mm * 3 / 2 - 2000).inertia_tiu == DUSTY * GROUND_TIU_PER_STEP);
+  g = ground_softest(centre(0, 0), pixel_mm * 3 / 2 + 2000);
+  CHECK(g.valid && g.inertia_tiu == SOFT * GROUND_TIU_PER_STEP);
+  // The dusty pixel diagonally: its corner is ~0.7 pixel away, not 0.5
+  CHECK(ground_softest(centre(0, 0), pixel_mm * 6 / 10).inertia_tiu == FIRM * GROUND_TIU_PER_STEP);
+  CHECK(ground_softest(centre(0, 0), pixel_mm * 8 / 10).inertia_tiu == DUSTY * GROUND_TIU_PER_STEP);
+  // West and north of the layer: the pixels within reach still count
+  const t_coord west = {WEST - STEP / 4, centre(0, 0).lat_udeg};
+  CHECK(!ground_get(west).valid);
+  g = ground_softest(west, pixel_mm / 2);
+  CHECK(g.valid && g.inertia_tiu == FIRM * GROUND_TIU_PER_STEP);
+  CHECK(!ground_softest(west, pixel_mm / 5).valid);
+  const t_coord north = {centre(0, 2).lon_udeg, NORTH + static_cast<int32_t>(STEP / 4)};
+  g = ground_softest(north, pixel_mm / 2);
+  CHECK(g.valid && g.inertia_tiu == SOFT * GROUND_TIU_PER_STEP);
+  CHECK(!ground_softest(north, pixel_mm / 5).valid);
+  // The largest radius: no overflow, every pixel within reach
+  g = ground_softest(centre(1, 1), UINT32_MAX);
+  CHECK(g.valid && g.inertia_tiu == SOFT * GROUND_TIU_PER_STEP);
+  // The clearance assessment sees soft ground within 50 m, the point not
+  const t_coord beside = {WEST + 2 * STEP - STEP / 5, centre(0, 2).lat_udeg}; // ~24 m west
+  CHECK(!(hazard_assess(beside, 0).reasons & HAZARD_SOFT_GROUND));
+  CHECK(hazard_assess_clearance(beside, 0).reasons & HAZARD_SOFT_GROUND);
+  CHECK(hazard_assess_clearance(beside, 0).level == HAZARD_DANGER);
+
+  t_ground_header bad = h;
+  bad.magic = IMAGERY_MAGIC;
+  memcpy(bytes, &bad, sizeof(bad));
+  CHECK(!ground_set(blob.data(), exact) && !ground_get(centre(0, 0)).valid);
+  bad = h;
+  bad.version = GROUND_VERSION + 1;
+  memcpy(bytes, &bad, sizeof(bad));
+  CHECK(!ground_set(blob.data(), exact));
+  bad = h;
+  bad.width = 0;
+  memcpy(bytes, &bad, sizeof(bad));
+  CHECK(!ground_set(blob.data(), sizeof(h)));
+  bad = h;
+  bad.step_udeg = 0;
+  memcpy(bytes, &bad, sizeof(bad));
+  CHECK(!ground_set(blob.data(), exact));
+  CHECK(ground_set(nullptr, 0) && !ground_get(centre(0, 0)).valid);
+}
+
+// v5 relief: the clearance slope (steepest within 50 m) read in place
+static void test_landform_clearance() {
+  uint32_t size = 0;
+  std::vector<uint32_t> blob = make_blob(ZONE_HEADER, &size);
+  const uint32_t count = uint32_t{ZONE_SIDE} * ZONE_SIDE;
+  uint8_t *near_slope = reinterpret_cast<uint8_t *>(blob.data()) + sizeof(t_landform_header) +
+                        count * (sizeof(int16_t) + sizeof(uint8_t));
+  constexpr uint8_t GENTLE = 2;
+  const uint32_t cell = JEZERO_ROW * ZONE_SIDE + JEZERO_COL;
+  near_slope[cell] = CLIFF_SLOPE_HALF_DEG;
+  // A v3/v4 sized blob (3 bytes per cell) is refused
+  CHECK(!landform_init(blob.data(), sizeof(t_landform_header) + count * 3));
+  CHECK(landform_init(blob.data(), size));
+  weather_set_link(nullptr);
+  hazard_set_spe_alert(false);
+  const t_landform l = landform_get(JEZERO);
+  CHECK(l.valid && l.near_half_deg == CLIFF_SLOPE_HALF_DEG && l.slope_half_deg < GENTLE + ZONE_GENTLE_MODULO);
+  CHECK(landform_get(zone_cell_centre(JEZERO_ROW, JEZERO_COL + 1)).near_half_deg ==
+        zone_slope(JEZERO_ROW, JEZERO_COL + 1));
+  CHECK(!(hazard_assess(JEZERO, 0).reasons & HAZARD_TOO_STEEP));
+  CHECK(hazard_assess_clearance(JEZERO, 0).reasons & HAZARD_TOO_STEEP);
+  CHECK(!(hazard_assess_clearance(zone_cell_centre(JEZERO_ROW, JEZERO_COL + 1), 0).reasons & HAZARD_TOO_STEEP));
+  // The elevation and the slope did not move with the third grid
+  CHECK(l.elevation_m == zone_elevation(JEZERO_COL) && l.slope_half_deg == zone_slope(JEZERO_ROW, JEZERO_COL));
+  load_zone();
+}
+
 int main(int argc, char **argv) {
   test_coord();
   test_endian_crc();
@@ -1092,6 +1389,12 @@ int main(int argc, char **argv) {
   test_weather_allocation();
   test_grid_prefetch();
   test_hazard();
+  test_landform_units();
+  test_imagery();
+  test_weather_mcd();
+  test_storms_and_area();
+  test_ground();
+  test_landform_clearance();
   if (argc > 1)
     test_tool_zone(argv[1]);
   if (argc > 2)
@@ -1105,7 +1408,7 @@ int main(int argc, char **argv) {
 
 // Compile time checks of the public contract //
 static_assert(sizeof(t_coord) == 8 && sizeof(t_landform) == 6);
-static_assert(sizeof(t_weather) == 8 && sizeof(t_radiation) == 6);
+static_assert(sizeof(t_weather) == 10 && sizeof(t_radiation) == 6);
 static_assert(sizeof(t_grid) <= 64, "a grid handle stays small");
 static_assert(ZONE_SIDE <= LANDFORM_MAX_SIDE);
 static_assert(CLIFF_SLOPE_HALF_DEG > HAZARD_SLOPE_DANGER_HALF_DEG);

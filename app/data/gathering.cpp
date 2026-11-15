@@ -18,4 +18,4 @@ bool data_is_hazard(t_coord coord, uint32_t time_s) {
   return (hazard_assess(coord, time_s).level == HAZARD_DANGER);
 }
 
-static_assert(sizeof(t_data_point) == 20, "6 + 8 + 6 bytes, no padding");
+static_assert(sizeof(t_data_point) == 22, "6 + 10 + 6 bytes, no padding");

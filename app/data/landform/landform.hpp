@@ -3,26 +3,25 @@
 #include "../core/coord.hpp"
 #include <cstdint>
 
-// Landform = static elevation + slope grids, in layers of different
-// resolutions, mixed at read time: the finest layer that covers the point
-// with data wins, the others fill the gaps.
-//   CTX DTM mosaic (~20 m) around the landing site, where it exists
-//   MOLA MEGDR 32 px/deg (~1.85 km) for the whole zone
-// Both are tied to the MOLA areoid (the CTX products are controlled to MOLA
-// topography), so their elevations agree. Blobs are made by
-// tools/fetch_landform.py.
-//
-// A layer is a read-only blob that stays where it is (flash, mmap): nothing is
-// copied, nothing is allocated.
+// Elevation and slope in layers (HiRISE 2 m ... MOLA 1.85 km), all on the
+// MOLA areoid: the finest layer with data wins. Read-only blobs read in place.
 //   blob (little endian, 4 bytes aligned):
-//     t_landform_header                        24 bytes
-//     int16_t  elevation_m[width * height]     row 0 = north, NODATA = hole
+//     t_landform_header                        28 bytes
+//     int16_t  elevation[width * height]       row 0 = north, NODATA = hole
+//              metres = base_m + elevation * unit_mm / 1000
 //     uint8_t  slope_half_deg[width * height]  precomputed, 0.5 deg steps
-// Columns and rows are equal steps of degrees (equirectangular grid).
+//     uint8_t  near_half_deg[width * height]   steepest slope within 50 m
 
 // Constants //
 constexpr uint32_t LANDFORM_MAGIC = 0x414C4F4D; // "MOLA" as little endian bytes
-constexpr uint16_t LANDFORM_VERSION = 3;        // v3: step in the header
+constexpr uint16_t LANDFORM_VERSION = 5; // v5: clearance slope
+// unit_mm = 0 in a header: whole metres
+constexpr uint16_t LANDFORM_UNIT_MM_DEFAULT = 1000;
+constexpr int32_t MM_PER_M_I = 1000;
+// Header limits, so every stored value in mm fits 32 bits:
+// |base| + 32767 * unit stays within +-65.6 km, far beyond Mars' relief
+constexpr uint16_t LANDFORM_MAX_UNIT_MM = 1000;
+constexpr int32_t LANDFORM_MAX_BASE_M = 32767;
 constexpr uint32_t LANDFORM_MOLA_PX_PER_DEG = 32;
 constexpr uint32_t LANDFORM_MOLA_STEP_UDEG =
     UDEG_PER_DEG / LANDFORM_MOLA_PX_PER_DEG;
@@ -39,9 +38,12 @@ constexpr int16_t LANDFORM_NODATA_M = INT16_MIN;
 constexpr uint32_t LANDFORM_MAX_SLOPE_HALF_DEG = 180;
 // 16384 cells of 20 m = 330 km per side, 805 MB: still 32 bit maths
 constexpr uint16_t LANDFORM_MAX_SIDE = 16384;
-// int16_t elevation + uint8_t slope
-constexpr uint32_t LANDFORM_BYTES_PER_CELL = 3;
+// int16_t elevation + uint8_t slope + uint8_t clearance slope
+constexpr uint32_t LANDFORM_BYTES_PER_CELL = 4;
+constexpr uint32_t LANDFORM_CLEARANCE_M = 50;
 constexpr uint8_t LANDFORM_MAX_LAYERS = 4;
+// landform_steepest() reads at most this many cells each way from the centre
+constexpr uint32_t LANDFORM_AREA_MAX_CELLS = 8;
 
 // Structures //
 struct s_landform_header {
@@ -52,7 +54,8 @@ struct s_landform_header {
   uint16_t width;
   uint16_t height;
   uint16_t version;
-  uint16_t reserved; // keeps the layout explicit, no hidden padding
+  uint16_t unit_mm; // elevation step, 0 = LANDFORM_UNIT_MM_DEFAULT
+  int32_t base_m;   // elevation of the stored value 0
 } typedef t_landform_header;
 
 struct s_landform {
@@ -60,15 +63,12 @@ struct s_landform {
   uint8_t slope_half_deg; // 0.5 deg steps, 180 = 90 deg (vertical)
   uint8_t layer;          // index in landform_layer(), 0 = finest
   bool valid;
+  uint8_t near_half_deg;  // steepest slope within LANDFORM_CLEARANCE_M
 } typedef t_landform;
 
 // Functions //
-// Drops every layer.
 void landform_clear();
-// Checks the blob (size, magic, version, alignment, step) and adds it as a
-// layer, kept sorted from the finest step to the coarsest. False if refused
-// or if LANDFORM_MAX_LAYERS are already loaded. The blob must stay alive and
-// unchanged while it is in use.
+// False if refused or full. The blob must stay alive and unchanged while used.
 bool landform_add_layer(const void *blob, uint32_t size);
 // landform_clear() + landform_add_layer(): a single zone
 bool landform_init(const void *blob, uint32_t size);
@@ -77,3 +77,7 @@ uint8_t landform_layer_count();
 const t_landform_header *landform_layer(uint8_t layer);
 // Finest layer with data at `coord`
 t_landform landform_get(t_coord coord);
+// Interpolated elevation in mm, for drawing (hazards use landform_get)
+bool landform_sample_mm(t_coord coord, int32_t *elevation_mm);
+// landform_get() with the steepest slope within `radius_mm`
+t_landform landform_steepest(t_coord coord, uint32_t radius_mm);

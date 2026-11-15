@@ -20,6 +20,7 @@ bool GridAStar::run(CoarseGrid& grid, const Query& q, std::vector<CoarseGrid::In
     const double diagonal = grid.cellSize() * std::numbers::sqrt2;
     const bool use_deviation = q.cost.usesDeviation();
     const double partial = q.cost.partialBlockPenalty();
+    const double caution = q.cost.cautionPenalty();
 
     g_.assign(n, std::numeric_limits<float>::infinity());
     meta_.assign(n, 0U);
@@ -75,7 +76,8 @@ bool GridAStar::run(CoarseGrid& grid, const Query& q, std::vector<CoarseGrid::In
             const double d = diag ? diagonal : grid.cellSize();
             const double dev = use_deviation ? 0.5 * (deviationSq(nb) + dev_cur) : 0.0;
             const double ng = g_cur + q.cost.edge(d, grid.elevation(nb) - z_cur, dev) +
-                              partial * 0.5 * (grid.hazardFraction(nb) + grid.hazardFraction(cur)) * d;
+                              partial * 0.5 * (grid.hazardFraction(nb) + grid.hazardFraction(cur)) * d +
+                              caution * 0.5 * (grid.cautionFraction(nb) + grid.cautionFraction(cur)) * d;
             if (ng < static_cast<double>(g_[nb])) {
                 g_[nb] = static_cast<float>(ng);
                 meta_[nb] = static_cast<std::uint8_t>(kHasParent | k);

@@ -47,6 +47,10 @@ namespace mars::ui {
 		lv_obj_set_style_bg_opa(frame_, LV_OPA_COVER, LV_PART_MAIN);
 		lv_obj_set_style_clip_corner(frame_, true, LV_PART_MAIN);
 
+		credit_ = widgets::label(root_, "");
+		lv_obj_set_width(credit_, lv_pct(100));
+		lv_obj_add_style(credit_, &styles.smallText, LV_PART_MAIN);
+		lv_obj_add_style(credit_, &styles.hint, LV_PART_MAIN);
 		name_ = widgets::label(root_, "");
 		lv_obj_set_width(name_, lv_pct(100));
 
@@ -65,6 +69,8 @@ namespace mars::ui {
 	{
 		lv_label_set_text_static(name_, point.name);
 		lv_label_set_text_static(description_, point.description);
+		lv_label_set_text_static(credit_, point.photoCredit != nullptr ? point.photoCredit : "");
+		widgets::setVisible(credit_, picture != nullptr && point.photoCredit != nullptr && point.photoCredit[0] != '\0');
 		coordinatesText_ = formatPosition(point.position);
 		lv_label_set_text_static(coordinates_, coordinatesText_.data());
 
@@ -85,6 +91,11 @@ namespace mars::ui {
 	void PointOfInterestCard::hide()
 	{
 		widgets::setVisible(root_, false);
+	}
+
+	bool PointOfInterestCard::isVisible() const
+	{
+		return !lv_obj_is_hidden(root_);
 	}
 
 	void PointOfInterestCard::onBack(lv_event_t* event)

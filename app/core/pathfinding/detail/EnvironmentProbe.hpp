@@ -28,6 +28,10 @@ public:
                      Config config, Vec2 start, Vec2 goal) noexcept;
 
     [[nodiscard]] bool hazard(Vec2 p) const;
+    /// Risk level of the user's map (one query, counted as a hazard query).
+    [[nodiscard]] RiskLevel level(Vec2 p) const;
+    /// 1 inside a caution area, 0 elsewhere (a danger is handled by hazard()).
+    [[nodiscard]] double caution(Vec2 p) const { return level(p) == RiskLevel::Caution ? 1.0 : 0.0; }
     [[nodiscard]] double elevation(Vec2 p) const;
 
     /// Outside any hazard and at least `margin` away from one (centre + 12-point ring).

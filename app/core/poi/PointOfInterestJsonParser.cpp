@@ -1,32 +1,14 @@
 #include "core/poi/PointOfInterestJsonParser.hpp"
 
 #include <cmath>
-#include <cstdint>
 #include <cstring>
 
+#include "core/gps/PositionFromDegrees.hpp"
 #include "core/json/JsonReader.hpp"
 
 namespace mars {
 
 	namespace {
-
-		constexpr double kE7 = 1e7;
-
-		[[nodiscard]] bool toPosition(double latitude, double longitude, t_position& position) noexcept
-		{
-			if (!(latitude >= -90.0 && latitude <= 90.0) || !(longitude >= -180.0 && longitude <= 360.0)) {
-				return false;  // also rejects NaN
-			}
-			if (longitude < 0.0) {
-				longitude += 360.0;
-			}
-			std::int64_t longitudeE7 = std::llround(longitude * kE7);
-			if (longitudeE7 >= 3'600'000'000) {
-				longitudeE7 -= 3'600'000'000;
-			}
-			position = {static_cast<std::int32_t>(std::llround(latitude * kE7)), static_cast<std::uint32_t>(longitudeE7)};
-			return position.isValid();
-		}
 
 		[[nodiscard]] bool parsePoint(json::Reader& reader, PointOfInterest& point)
 		{
@@ -34,6 +16,9 @@ namespace mars {
 			const char* description = "";
 			double latitude = NAN;
 			double longitude = NAN;
+			const char* category = "feature";
+			const char* photo = "";
+			const char* credit = "";
 
 			if (!reader.beginObject()) {
 				return false;
@@ -49,6 +34,12 @@ namespace mars {
 					ok = reader.readNumber(latitude);
 				} else if (std::strcmp(key, "longitude") == 0) {
 					ok = reader.readNumber(longitude);
+				} else if (std::strcmp(key, "category") == 0) {
+					ok = reader.readString(category);
+				} else if (std::strcmp(key, "photo") == 0) {
+					ok = reader.readString(photo);
+				} else if (std::strcmp(key, "photo_credit") == 0) {
+					ok = reader.readString(credit);
 				} else {
 					ok = reader.skipValue();
 				}
@@ -61,7 +52,12 @@ namespace mars {
 			}
 			point.name = name;
 			point.description = description;
-			return toPosition(latitude, longitude, point.position);
+			point.photo = photo;
+			point.photoCredit = credit;
+			point.category = std::strcmp(category, "hardware") == 0 ? PlaceCategory::Hardware
+				: std::strcmp(category, "site") == 0              ? PlaceCategory::Site
+																  : PlaceCategory::Feature;
+			return positionFromDegrees(latitude, longitude, point.position);
 		}
 
 		[[nodiscard]] bool parseDocument(json::Reader& reader, std::vector<PointOfInterest>& points)

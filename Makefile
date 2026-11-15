@@ -21,11 +21,12 @@ DEPS        = $(OBJS:.o=.d)
 CXX         = $(if $(CROSS),$(CROSS)g++,c++)
 CC          = $(if $(CROSS),$(CROSS)gcc,cc)
 
-CXXFLAGS    = -std=c++20 -O0 -g \
+# -O2: the map is drawn one sample per pixel (843 k a frame on the iPad mini)
+CXXFLAGS    = -std=c++20 -O2 -g \
               -Wall -Wextra -Werror -Wpedantic \
               -Wshadow -Wconversion -Wsign-conversion
 
-CFLAGS      = -O0 -g
+CFLAGS      = -O2 -g
 DEPFLAGS    = -MMD -MP -fdiagnostics-color=always
 
 SDL_PREFIX := $(shell $(SDL_CONFIG) --prefix 2>/dev/null)
@@ -159,6 +160,43 @@ test: check-embedded
 	    || (printf "%b\n" "$(RED)Error compiling tests!$(DEF_COLOR)" && exit 1)
 	@$(TEST_RUN) ./$(TMP_DIR)/data_test $(ZONE) $(ZONE_FINE)
 
+# Application tests without a screen: guidance, simulated GPS, the planner on
+# the data module (sanitizers on, like `make test`)
+APP_TEST_SRC = $(APP_DIR)/guidance/guidance.cpp $(APP_DIR)/guidance/course.cpp $(APP_DIR)/platform/gps_sim.cpp \
+               $(sort $(shell find $(APP_DIR)/integration $(APP_DIR)/core/pathfinding $(APP_DIR)/core/json $(APP_DIR)/core/route -name '*.cpp' 2>/dev/null)) \
+               $(DATA_SRC)
+
+test-app:
+	@mkdir -p $(TMP_DIR)
+	@$(CXX) $(CXXFLAGS) $(TEST_SAN) -I. -I$(APP_DIR) -Itests tests/guidance_test.cpp \
+	    $(APP_TEST_SRC) -o $(TMP_DIR)/guidance_test \
+	    || (printf "%b\n" "$(RED)Error compiling tests!$(DEF_COLOR)" && exit 1)
+	@$(TEST_RUN) ./$(TMP_DIR)/guidance_test
+
+# The whole screen on a display without a window, from the objects of the
+# build: every app source but main.cpp and the SDL backend
+UI_TEST_SRC  = $(filter-out $(APP_DIR)/main.cpp $(APP_DIR)/platform/SdlDisplayBackend.cpp,$(SRC))
+UI_TEST_OBJS = $(patsubst %.cpp, $(TMP_DIR)/%.o, $(UI_TEST_SRC)) \
+               $(patsubst %.c,   $(TMP_DIR)/%.o, $(LV_SRC))
+
+test-ui: $(UI_TEST_OBJS)
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) -Itests tests/ui_smoke_test.cpp $(UI_TEST_OBJS) \
+	    -o $(TMP_DIR)/ui_smoke_test $(LDFLAGS) \
+	    || (printf "%b\n" "$(RED)Error compiling tests!$(DEF_COLOR)" && exit 1)
+	@$(TEST_RUN) ./$(TMP_DIR)/ui_smoke_test
+
+# Real data of the site in assets/mission_site.json (data/ is git ignored):
+# relief down to 2 m, orbital images, Mars Climate Database weather. The tool
+# runs in its own virtual environment (numpy, tifffile, imagecodecs).
+TOOLS_VENV  = .venv-tools
+data: $(TOOLS_VENV)/.ready
+	@$(TOOLS_VENV)/bin/python tools/fetch_site.py
+
+$(TOOLS_VENV)/.ready: tools/requirements.txt
+	@python3 -m venv $(TOOLS_VENV)
+	@$(TOOLS_VENV)/bin/pip install -q -r tools/requirements.txt
+	@touch $@
+
 .DELETE_ON_ERROR:
 
-.PHONY: all build clean fclean re test check-embedded
+.PHONY: all build clean fclean re test check-embedded test-app test-ui data

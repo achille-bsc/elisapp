@@ -33,6 +33,8 @@ namespace mars::ui {
 
 		lv_obj_t* const bar = widgets::box(handle, &styles.pill);
 		lv_obj_set_size(bar, kHandleWidth, kHandleHeight);
+		// The pill colour barely shows on the dark panel: the panel's line colour
+		lv_obj_set_style_bg_color(bar, lv_color_hex(theme::kPanelLine), LV_PART_MAIN);
 		lv_obj_center(bar);
 
 		content_ = widgets::box(root_);

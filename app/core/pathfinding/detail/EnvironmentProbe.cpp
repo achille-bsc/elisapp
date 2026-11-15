@@ -28,6 +28,11 @@ bool EnvironmentProbe::hazard(Vec2 p) const {
     return risk_.isHazard(projection_.toGeo(p));
 }
 
+RiskLevel EnvironmentProbe::level(Vec2 p) const {
+    ++hazard_queries_;
+    return risk_.level(projection_.toGeo(p));
+}
+
 double EnvironmentProbe::elevation(Vec2 p) const {
     ++elevation_queries_;
     return static_cast<double>(terrain_.elevation(projection_.toGeo(p)));

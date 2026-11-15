@@ -1,0 +1,29 @@
+{
+  "source": "Exercise bulletin, not a real forecast: no operational dust storm forecast is published for Mars. Replace it with the orbiters' weather report (MRO MARCI) during a mission.",
+  "storms": [
+    {
+      "name": "Dust storm DS-1",
+      "latitude": 18.33,
+      "longitude": 77.27,
+      "radius_km": 3.0,
+      "start_in_hours": 5,
+      "duration_hours": 9,
+      "drift_east_m_s": 0.25,
+      "drift_north_m_s": 0.05,
+      "dust_opacity": 2.5,
+      "wind_m_s": 22
+    },
+    {
+      "name": "Dust devil field DD-2",
+      "latitude": 18.47,
+      "longitude": 77.5,
+      "radius_km": 1.2,
+      "start_in_hours": 1,
+      "duration_hours": 4,
+      "drift_east_m_s": -0.1,
+      "drift_north_m_s": 0.0,
+      "dust_opacity": 1.0,
+      "wind_m_s": 15
+    }
+  ]
+}

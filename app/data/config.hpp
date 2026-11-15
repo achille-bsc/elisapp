@@ -17,18 +17,18 @@ constexpr int32_t MARS_SCALE_HEIGHT_M = 11100;
 constexpr uint32_t MARS_RADIUS_MM = 3389500000u;
 
 // Weather satellite //
-// Built-in cache: 16 chunks of 8x8 deg (7.5 KB) cover a 500 km zone at low and
+// Built-in cache: 15 chunks of 8x8 deg (7.8 KB) cover a 500 km zone at low and
 // mid latitudes. Bigger trips: caller sized cache, see weather_set_cache().
-constexpr uint8_t WEATHER_CACHE_SLOTS = 16;
+constexpr uint8_t WEATHER_CACHE_SLOTS = 15;
 
 // Local weather evolution (diurnal cycle, weather_model.cpp) //
-// Thermal tide: column mass varies about +-5 % around the median (Guo 2015)
-constexpr uint16_t PRESSURE_DIURNAL_AMPLITUDE_PERMILLE = 50;
-// shortcut: peak hours are approximations (REMS/MEDA papers not reached),
-// replace them by fitted values for the landing site
-constexpr uint32_t PRESSURE_PEAK_HOUR = 8;
-constexpr uint16_t TEMPERATURE_DIURNAL_AMPLITUDE_DK = 360; // +-36 K
-constexpr uint32_t TEMPERATURE_PEAK_HOUR = 14;
+// Fitted on the Mars Climate Database v6.2 at Jezero, Ls 22, 2 m:
+// datum pressure 577.2 .. 593.7 Pa, highest at 7 h: +-1.4 %
+constexpr uint16_t PRESSURE_DIURNAL_AMPLITUDE_PERMILLE = 14;
+constexpr uint32_t PRESSURE_PEAK_HOUR = 7;
+// air 193.6 .. 243.3 K, warmest at 15 h: +-24.9 K
+constexpr uint16_t TEMPERATURE_DIURNAL_AMPLITUDE_DK = 249;
+constexpr uint32_t TEMPERATURE_PEAK_HOUR = 15;
 
 // Radiation (radiation.cpp), linear fit of Guo et al. 2015, RAD detector E //
 // D = D01 + KAPPA * (P - P0) + BETA * PHI
@@ -73,6 +73,12 @@ constexpr uint32_t HAZARD_FINE_TERRAIN_MAX_STEP_UDEG = 1000; // ~60 m
 // shortcut: no NASA norm found, placeholders to calibrate
 constexpr uint16_t HAZARD_WIND_CMS = 2500; // 25 m/s
 constexpr uint8_t HAZARD_DUST_X40 = 80;    // tau 2: dust storm
+
+// Soft and dusty ground, from the thermal inertia (ground/ground.hpp) //
+// Below ~100-150 tiu: dust or loose fines (Putzig et al. 2005)
+// shortcut: team thresholds, to calibrate
+constexpr uint16_t GROUND_SOFT_MAX_TIU = 120;  // danger: go round
+constexpr uint16_t GROUND_DUSTY_MAX_TIU = 200; // caution
 
 // Traverse on foot (hazard_route) //
 // xEMU / xEVA: one EVA lasts up to 8 hours

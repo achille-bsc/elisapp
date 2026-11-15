@@ -13,15 +13,19 @@
 // Wire format, little endian, every frame ends with a CRC16-CCITT-FALSE:
 //   request  : magic u16, version u8, type u8, col u16, row u16, crc u16
 //   response : magic u16, version u8, type u8, col u16, row u16, time_s u32,
-//              64 cells (temp u16, pressure u16, wind u16, dust u8), crc u16
+//              64 cells (temp u16, pressure u16, wind u16, dust u8,
+//              wind from u8), crc u16
 // col counts 8 deg chunks east from 0 deg, row counts them north from 90 S.
 // time_s is the observation time: mission seconds, see weather_model.hpp.
+// A cell the satellite has no observation for carries a temperature of 0 K.
 
 // Constants //
 constexpr uint16_t WEATHER_MAGIC = 0x5758; // "WX"
-constexpr uint8_t WEATHER_VERSION = 2;     // v2: pressure reduced to datum
+constexpr uint8_t WEATHER_VERSION = 4; // v4: wind direction
 constexpr uint8_t WEATHER_TYPE_REQUEST = 1;
 constexpr uint8_t WEATHER_TYPE_RESPONSE = 2;
+// Temperature of a cell without observation (no real air is at 0 K)
+constexpr uint16_t WEATHER_NO_OBSERVATION_DK = 0;
 
 constexpr uint32_t WEATHER_CELL_UDEG = UDEG_PER_DEG; // 1 deg
 constexpr uint32_t WEATHER_CHUNK_SIDE = 8;           // cells per chunk side
@@ -43,9 +47,12 @@ constexpr uint16_t WEATHER_CELL_OFF_TEMP = 0;
 constexpr uint16_t WEATHER_CELL_OFF_PRESSURE = 2;
 constexpr uint16_t WEATHER_CELL_OFF_WIND = 4;
 constexpr uint16_t WEATHER_CELL_OFF_DUST = 6;
+constexpr uint16_t WEATHER_CELL_OFF_WIND_FROM = 7;
+// Wind direction in 1/256 of a turn
+constexpr uint32_t WEATHER_TURN_STEPS = 256;
 
 constexpr uint16_t WEATHER_TIME_SIZE = sizeof(uint32_t);
-constexpr uint16_t WEATHER_CELL_WIRE_SIZE = WEATHER_CELL_OFF_DUST + 1;
+constexpr uint16_t WEATHER_CELL_WIRE_SIZE = WEATHER_CELL_OFF_WIND_FROM + 1;
 constexpr uint16_t WEATHER_HEADER_SIZE = WEATHER_OFF_BODY + WEATHER_TIME_SIZE;
 constexpr uint16_t WEATHER_REQUEST_SIZE = WEATHER_OFF_BODY + CRC16_SIZE;
 constexpr uint16_t WEATHER_RESPONSE_SIZE =
@@ -58,7 +65,11 @@ struct s_weather {
   uint16_t pressure_dpa;   // tenths of pascal: 6105 = 610.5 Pa
   uint16_t wind_cms;       // cm/s: 1250 = 12.5 m/s
   uint8_t dust_x40;        // dust opacity (tau) * 40: 20 = 0.5
+  // Where the wind blows from, clockwise from true north, 1/256 turn (WMO
+  // convention): 64 = from the east
+  uint8_t wind_from_x256;
   bool valid;
+  uint8_t reserved; // keeps the layout explicit
 } typedef t_weather;
 
 struct s_weather_chunk {
