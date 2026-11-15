@@ -21,11 +21,12 @@ DEPS        = $(OBJS:.o=.d)
 CXX         = $(if $(CROSS),$(CROSS)g++,c++)
 CC          = $(if $(CROSS),$(CROSS)gcc,cc)
 
-CXXFLAGS    = -std=c++20 -O0 -g \
+# -O2: the map is drawn one sample per pixel (843 k a frame on the iPad mini)
+CXXFLAGS    = -std=c++20 -O2 -g \
               -Wall -Wextra -Werror -Wpedantic \
               -Wshadow -Wconversion -Wsign-conversion
 
-CFLAGS      = -O0 -g
+CFLAGS      = -O2 -g
 DEPFLAGS    = -MMD -MP -fdiagnostics-color=always
 
 SDL_PREFIX := $(shell $(SDL_CONFIG) --prefix 2>/dev/null)
@@ -161,8 +162,8 @@ test: check-embedded
 
 # Application tests without a screen: guidance, simulated GPS, the planner on
 # the data module (sanitizers on, like `make test`)
-APP_TEST_SRC = $(APP_DIR)/guidance/guidance.cpp $(APP_DIR)/platform/gps_sim.cpp \
-               $(sort $(shell find $(APP_DIR)/integration $(APP_DIR)/core/pathfinding -name '*.cpp' 2>/dev/null)) \
+APP_TEST_SRC = $(APP_DIR)/guidance/guidance.cpp $(APP_DIR)/guidance/course.cpp $(APP_DIR)/platform/gps_sim.cpp \
+               $(sort $(shell find $(APP_DIR)/integration $(APP_DIR)/core/pathfinding $(APP_DIR)/core/json $(APP_DIR)/core/route -name '*.cpp' 2>/dev/null)) \
                $(DATA_SRC)
 
 test-app:
@@ -184,9 +185,17 @@ test-ui: $(UI_TEST_OBJS)
 	    || (printf "%b\n" "$(RED)Error compiling tests!$(DEF_COLOR)" && exit 1)
 	@$(TEST_RUN) ./$(TMP_DIR)/ui_smoke_test
 
-# MOLA relief around the base (~1 MB, data/ is git ignored)
-data:
-	@python3 tools/fetch_landform.py --out data/landform_zone.bin
+# Real data of the site in assets/mission_site.json (data/ is git ignored):
+# relief down to 2 m, orbital images, Mars Climate Database weather. The tool
+# runs in its own virtual environment (numpy, tifffile, imagecodecs).
+TOOLS_VENV  = .venv-tools
+data: $(TOOLS_VENV)/.ready
+	@$(TOOLS_VENV)/bin/python tools/fetch_site.py
+
+$(TOOLS_VENV)/.ready: tools/requirements.txt
+	@python3 -m venv $(TOOLS_VENV)
+	@$(TOOLS_VENV)/bin/pip install -q -r tools/requirements.txt
+	@touch $@
 
 .DELETE_ON_ERROR:
 

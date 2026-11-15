@@ -25,3 +25,6 @@ __pycache__/
 .idea/
 *.swp
 .DS_Store
+
+# Python virtual environment of the data tools (make data)
+/.venv-tools/
