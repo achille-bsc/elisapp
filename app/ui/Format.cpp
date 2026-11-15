@@ -25,11 +25,13 @@ namespace mars::ui {
 			{HazardReason::Wind, "strong wind"},
 			{HazardReason::RadiationCritical, "critical radiation"},
 			{HazardReason::DoseBudget, "radiation dose over the career limit"},
+			{HazardReason::SoftGround, "soft ground"},
 			{HazardReason::Steep, "slope over 15°"},
+			{HazardReason::DustyGround, "dusty ground"},
 			{HazardReason::RadiationHigh, "high radiation"},
 			{HazardReason::EvaTooLong, "longer than one EVA (8 h)"},
 			{HazardReason::BeyondZone, "over 100 km from the start"},
-			{HazardReason::CoarseTerrain, "relief known at 2 km only"},
+			{HazardReason::CoarseTerrain, "slope from coarse relief only"},
 			{HazardReason::NoWeather, "no weather data"},
 		};
 

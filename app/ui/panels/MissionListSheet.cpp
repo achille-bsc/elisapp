@@ -18,6 +18,8 @@ namespace mars::ui {
 		void makeRule(lv_obj_t* parent)
 		{
 			lv_obj_t* const rule = widgets::box(parent, &theme::styles().pill);
+			// Seen on the dark sheet: the panel's line colour, not the pill's
+			lv_obj_set_style_bg_color(rule, lv_color_hex(theme::kPanelLine), LV_PART_MAIN);
 			lv_obj_set_height(rule, kRuleHeight);
 			lv_obj_set_flex_grow(rule, 1);
 		}

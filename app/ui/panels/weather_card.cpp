@@ -2,9 +2,11 @@
 
 #include "../../data/config.hpp"
 #include "../Format.hpp"
+#include "../PositionText.hpp"
 #include "../Theme.hpp"
 #include "../Widgets.hpp"
 #include "../mission_time.hpp"
+#include "../../guidance/guidance.hpp"
 
 namespace mars::ui {
 
@@ -44,7 +46,7 @@ void weather_card_create(t_weather_card *card, lv_obj_t *parent,
   card->context = context;
   card->root = widgets::box(parent, &styles.card);
   lv_obj_set_size(card->root, CARD_WIDTH, LV_SIZE_CONTENT);
-  // Top left: above the mission sheet it is opened from
+  lv_obj_set_style_max_height(card->root, lv_pct(96), LV_PART_MAIN);
   lv_obj_align(card->root, LV_ALIGN_TOP_LEFT, theme::kScreenMargin,
                theme::kScreenMargin / 2);
   lv_obj_set_style_pad_all(card->root, CARD_PADDING, LV_PART_MAIN);
@@ -61,6 +63,7 @@ void weather_card_create(t_weather_card *card, lv_obj_t *parent,
 
   card->title = make_line(card->root, nullptr);
   card->now = make_line(card->root, &styles.hint);
+  card->ground = make_line(card->root, &styles.smallText);
   card->air = make_line(card->root, nullptr);
   card->wind = make_line(card->root, nullptr);
   card->radiation = make_line(card->root, nullptr);
@@ -73,20 +76,35 @@ void weather_card_create(t_weather_card *card, lv_obj_t *parent,
 }
 
 static void show_now(t_weather_card *card, const EnvironmentSample &s,
-                     t_position position, uint32_t time_s) {
+                     t_position position, uint32_t time_s, uint32_t now_s) {
   const ShortText lmst = format_lmst(position, time_s);
-  lv_label_set_text_fmt(card->now, "Now, %s", lmst.data());
+  if (time_s > now_s) {
+    const ShortText in = formatDuration(time_s - now_s);
+    lv_label_set_text_fmt(card->now, "At %s, in %s", lmst.data(), in.data());
+  } else {
+    lv_label_set_text_fmt(card->now, "Now, %s", lmst.data());
+  }
+  const PositionText where = formatPosition(position);
+  if (s.hasTerrain)
+    lv_label_set_text_fmt(card->ground, "%s\nGround %d m, slope %u.%u\xC2\xB0",
+                          where.data(), static_cast<int>(s.elevationM),
+                          static_cast<unsigned>(s.slopeHalfDegrees / 2),
+                          static_cast<unsigned>(s.slopeHalfDegrees % 2 * 5));
+  else
+    lv_label_set_text_fmt(card->ground, "%s\nGround unknown", where.data());
   if (s.hasWeather) {
     const ShortText air = format_temperature(s.temperatureDeciKelvin);
-    lv_label_set_text_fmt(card->air, "Air %s  \xE2\x80\xA2  %u Pa", air.data(),
-                          static_cast<unsigned>(s.pressureDeciPascal / DPA_PER_PA));
     const uint32_t dust = uint32_t{s.dustOpacityX40} * HUNDREDTHS / DUST_SCALE;
+    lv_label_set_text_fmt(card->air, "Air %s  \xE2\x80\xA2  %u Pa  \xE2\x80\xA2  dust %u.%02u", air.data(),
+                          static_cast<unsigned>(s.pressureDeciPascal / DPA_PER_PA),
+                          static_cast<unsigned>(dust / HUNDREDTHS),
+                          static_cast<unsigned>(dust % HUNDREDTHS));
+    const unsigned from_deg = (s.windFromX256 * 360U + 128U) / 256U % 360U;
     lv_label_set_text_fmt(
-        card->wind, "Wind %u.%u m/s  \xE2\x80\xA2  dust opacity %u.%02u",
+        card->wind, "Wind %u.%u m/s from %s (%03u\xC2\xB0)",
         static_cast<unsigned>(s.windCmPerSecond / CMS_PER_MS),
         static_cast<unsigned>(s.windCmPerSecond % CMS_PER_MS / CMS_PER_DECI_MS),
-        static_cast<unsigned>(dust / HUNDREDTHS),
-        static_cast<unsigned>(dust % HUNDREDTHS));
+        guidance_compass(static_cast<uint16_t>(from_deg)), from_deg);
   } else {
     lv_label_set_text_static(card->air, "No weather data for this place.");
     lv_label_set_text_static(card->wind, "");
@@ -104,9 +122,10 @@ static void show_now(t_weather_card *card, const EnvironmentSample &s,
 }
 
 void weather_card_show(t_weather_card *card, const IEnvironment &environment,
-                       const char *place, t_position position, uint32_t time_s) {
-  lv_label_set_text_fmt(card->title, "Weather at %s", place);
-  show_now(card, environment.sample(position, time_s), position, time_s);
+                       const char *title, t_position position, uint32_t time_s,
+                       uint32_t now_s) {
+  lv_label_set_text(card->title, title);
+  show_now(card, environment.sample(position, time_s), position, time_s, now_s);
   const uint32_t step_s = WEATHER_CARD_FORECAST_STEP_HOURS * MARS_HOUR_S;
   for (uint32_t i = 0; i < WEATHER_CARD_FORECAST_ROWS; i++) {
     const uint32_t at_s = time_s + (i + 1) * step_s;
@@ -124,6 +143,10 @@ void weather_card_show(t_weather_card *card, const IEnvironment &environment,
                           hazardLevelName(s.level));
   }
   widgets::setVisible(card->root, true);
+}
+
+bool weather_card_is_visible(const t_weather_card *card) {
+  return (!lv_obj_is_hidden(card->root));
 }
 
 void weather_card_hide(t_weather_card *card) {

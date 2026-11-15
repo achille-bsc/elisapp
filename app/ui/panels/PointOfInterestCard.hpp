@@ -16,8 +16,18 @@ namespace mars::ui {
 		~IPointOfInterestCardListener() = default;
 	};
 
-	/// The card describing a point of interest: picture, name, description and
-	/// coordinates.
+	/// Supplies the photo of a place as an LVGL image source.
+	class IPlacePhotos {
+	public:
+		/// The photo of `point`, valid while the supplier lives; nullptr if none.
+		[[nodiscard]] virtual const void* photo(const PointOfInterest& point) = 0;
+
+	protected:
+		~IPlacePhotos() = default;
+	};
+
+	/// The card describing a point of interest: picture and its credit, name,
+	/// description and coordinates.
 	class PointOfInterestCard {
 	public:
 		PointOfInterestCard(lv_obj_t* parent, IPointOfInterestCardListener& listener);
@@ -29,6 +39,7 @@ namespace mars::ui {
 		/// must stay valid too, or nullptr for the empty frame.
 		void show(const PointOfInterest& point, const void* picture = nullptr);
 		void hide();
+		[[nodiscard]] bool isVisible() const;
 
 	private:
 		static void onBack(lv_event_t* event);
@@ -37,6 +48,7 @@ namespace mars::ui {
 		lv_obj_t* root_;
 		lv_obj_t* frame_;
 		lv_obj_t* picture_{nullptr};
+		lv_obj_t* credit_{nullptr};
 		lv_obj_t* name_;
 		lv_obj_t* description_;
 		lv_obj_t* coordinates_;

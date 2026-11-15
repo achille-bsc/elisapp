@@ -25,15 +25,20 @@ namespace mars::ui::theme {
 
 			lv_style_init(&s.checked);
 			lv_style_set_bg_color(&s.checked, lv_color_hex(kAccent));
+			lv_style_set_text_color(&s.checked, lv_color_hex(kOnAccent));
 
 			lv_style_init(&s.sheet);
-			lv_style_set_bg_color(&s.sheet, lv_color_hex(kAccent));
+			lv_style_set_bg_color(&s.sheet, lv_color_hex(kPanel));
 			lv_style_set_bg_opa(&s.sheet, LV_OPA_COVER);
+			lv_style_set_border_color(&s.sheet, lv_color_hex(kPanelLine));
+			lv_style_set_border_width(&s.sheet, 1);
 			lv_style_set_radius(&s.sheet, kSheetRadius);
 			lv_style_set_text_color(&s.sheet, lv_color_hex(kText));
 
 			lv_style_init(&s.card);
-			lv_style_set_bg_color(&s.card, lv_color_hex(kSurface));
+			lv_style_set_bg_color(&s.card, lv_color_hex(kPanel));
+			lv_style_set_border_color(&s.card, lv_color_hex(kPanelLine));
+			lv_style_set_border_width(&s.card, 1);
 			lv_style_set_bg_opa(&s.card, LV_OPA_COVER);
 			lv_style_set_radius(&s.card, kCardRadius);
 			lv_style_set_text_color(&s.card, lv_color_hex(kText));
@@ -42,7 +47,7 @@ namespace mars::ui::theme {
 			lv_style_set_bg_color(&s.backButton, lv_color_hex(kBack));
 			lv_style_set_bg_opa(&s.backButton, LV_OPA_COVER);
 			lv_style_set_radius(&s.backButton, LV_RADIUS_CIRCLE);
-			lv_style_set_text_color(&s.backButton, lv_color_hex(kSurface));
+			lv_style_set_text_color(&s.backButton, lv_color_hex(kText));
 
 			lv_style_init(&s.backPressed);
 			lv_style_set_bg_color(&s.backPressed, lv_color_hex(kBackPressed));

@@ -3,7 +3,7 @@
 #include <lvgl.h>
 
 #include "core/mission/Mission.hpp"
-#include "core/route/Route.hpp"
+#include "core/route/TripPlanner.hpp"
 #include "ui/panels/BottomSheet.hpp"
 
 namespace mars::ui {
@@ -19,9 +19,9 @@ namespace mars::ui {
 		~IMissionDetailListener() = default;
 	};
 
-	/// The sheet shown while a route is displayed: summary of the mission, travel
-	/// times on foot and by rover, risk of the route, Start (guidance) and
-	/// weather report buttons, and description.
+	/// The sheet shown while a trip is displayed: summary of the mission, the
+	/// round trip on foot and by rover, risk of the way out and back, Start
+	/// (guidance) and weather report buttons, and description.
 	class MissionDetailSheet {
 	public:
 		MissionDetailSheet(lv_obj_t* parent, IMissionDetailListener& listener);
@@ -29,10 +29,10 @@ namespace mars::ui {
 		MissionDetailSheet& operator=(const MissionDetailSheet&) = delete;
 
 		/// Fills the sheet with `mission`, which must stay valid while it is shown,
-		/// and the route planned to it.
-		void show(const Mission& mission, const RouteSummary& route);
-		/// The route was planned again (the crew moved).
-		void setRoute(const RouteSummary& route);
+		/// and the round trip planned to it.
+		void show(const Mission& mission, const TripSummary& trip);
+		/// The trip was planned again (the crew moved).
+		void setTrip(const TripSummary& trip);
 		void hide();
 
 	private:
