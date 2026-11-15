@@ -18,6 +18,8 @@ namespace mars {
 		std::uint16_t pressureDeciPascal;
 		std::uint16_t windCmPerSecond;
 		std::uint8_t dustOpacityX40;
+		/// Where the wind blows from, 1/256 turn clockwise from north (WMO).
+		std::uint8_t windFromX256;
 		bool hasWeather;
 
 		std::uint16_t doseMicroSievertPerSol;

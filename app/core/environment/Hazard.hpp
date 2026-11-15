@@ -28,6 +28,8 @@ namespace mars {
 		EvaTooLong = 1U << 10U,        ///< Caution: more than one EVA on foot.
 		BeyondZone = 1U << 11U,        ///< Caution: outside the exploration zone.
 		DoseBudget = 1U << 12U,        ///< Danger: career dose exceeded on the way.
+		SoftGround = 1U << 13U,        ///< Danger: loose fines, low thermal inertia.
+		DustyGround = 1U << 14U,       ///< Caution: dusty ground.
 	};
 
 	using HazardReasons = std::uint16_t;

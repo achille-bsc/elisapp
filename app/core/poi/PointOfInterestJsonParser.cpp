@@ -16,6 +16,9 @@ namespace mars {
 			const char* description = "";
 			double latitude = NAN;
 			double longitude = NAN;
+			const char* category = "feature";
+			const char* photo = "";
+			const char* credit = "";
 
 			if (!reader.beginObject()) {
 				return false;
@@ -31,6 +34,12 @@ namespace mars {
 					ok = reader.readNumber(latitude);
 				} else if (std::strcmp(key, "longitude") == 0) {
 					ok = reader.readNumber(longitude);
+				} else if (std::strcmp(key, "category") == 0) {
+					ok = reader.readString(category);
+				} else if (std::strcmp(key, "photo") == 0) {
+					ok = reader.readString(photo);
+				} else if (std::strcmp(key, "photo_credit") == 0) {
+					ok = reader.readString(credit);
 				} else {
 					ok = reader.skipValue();
 				}
@@ -43,6 +52,11 @@ namespace mars {
 			}
 			point.name = name;
 			point.description = description;
+			point.photo = photo;
+			point.photoCredit = credit;
+			point.category = std::strcmp(category, "hardware") == 0 ? PlaceCategory::Hardware
+				: std::strcmp(category, "site") == 0              ? PlaceCategory::Site
+																  : PlaceCategory::Feature;
 			return positionFromDegrees(latitude, longitude, point.position);
 		}
 
