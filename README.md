@@ -16,3 +16,8 @@ In the future, Elisapp could be installed in a rover to enable it to navigate au
 ## Tools, coding languages, hardware and software
  - C++ 20<br>
  - LVGL <br>
+
+## Presentation video
+
+[![Elisapp presentation video](https://img.youtube.com/vi/C744CwTNDgw/hqdefault.jpg)](https://www.youtube.com/watch?v=C744CwTNDgw)<br>
+▶️ [Watch the presentation on YouTube](https://www.youtube.com/watch?v=C744CwTNDgw)
