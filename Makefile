@@ -159,6 +159,35 @@ test: check-embedded
 	    || (printf "%b\n" "$(RED)Error compiling tests!$(DEF_COLOR)" && exit 1)
 	@$(TEST_RUN) ./$(TMP_DIR)/data_test $(ZONE) $(ZONE_FINE)
 
+# Application tests without a screen: guidance, simulated GPS, the planner on
+# the data module (sanitizers on, like `make test`)
+APP_TEST_SRC = $(APP_DIR)/guidance/guidance.cpp $(APP_DIR)/platform/gps_sim.cpp \
+               $(sort $(shell find $(APP_DIR)/integration $(APP_DIR)/core/pathfinding -name '*.cpp' 2>/dev/null)) \
+               $(DATA_SRC)
+
+test-app:
+	@mkdir -p $(TMP_DIR)
+	@$(CXX) $(CXXFLAGS) $(TEST_SAN) -I. -I$(APP_DIR) -Itests tests/guidance_test.cpp \
+	    $(APP_TEST_SRC) -o $(TMP_DIR)/guidance_test \
+	    || (printf "%b\n" "$(RED)Error compiling tests!$(DEF_COLOR)" && exit 1)
+	@$(TEST_RUN) ./$(TMP_DIR)/guidance_test
+
+# The whole screen on a display without a window, from the objects of the
+# build: every app source but main.cpp and the SDL backend
+UI_TEST_SRC  = $(filter-out $(APP_DIR)/main.cpp $(APP_DIR)/platform/SdlDisplayBackend.cpp,$(SRC))
+UI_TEST_OBJS = $(patsubst %.cpp, $(TMP_DIR)/%.o, $(UI_TEST_SRC)) \
+               $(patsubst %.c,   $(TMP_DIR)/%.o, $(LV_SRC))
+
+test-ui: $(UI_TEST_OBJS)
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) -Itests tests/ui_smoke_test.cpp $(UI_TEST_OBJS) \
+	    -o $(TMP_DIR)/ui_smoke_test $(LDFLAGS) \
+	    || (printf "%b\n" "$(RED)Error compiling tests!$(DEF_COLOR)" && exit 1)
+	@$(TEST_RUN) ./$(TMP_DIR)/ui_smoke_test
+
+# MOLA relief around the base (~1 MB, data/ is git ignored)
+data:
+	@python3 tools/fetch_landform.py --out data/landform_zone.bin
+
 .DELETE_ON_ERROR:
 
-.PHONY: all build clean fclean re test check-embedded
+.PHONY: all build clean fclean re test check-embedded test-app test-ui data
