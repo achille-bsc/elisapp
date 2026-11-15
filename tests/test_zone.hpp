@@ -1,6 +1,7 @@
 #pragma once
 
 #include "data/data.hpp"
+#include <cmath>
 #include <cstring>
 #include <vector>
 
@@ -25,6 +26,31 @@ inline std::vector<uint32_t> test_zone_make(t_landform_header header,
   for (uint32_t i = 0; i < count; i++) {
     elevation[i] = elevation_m;
     slope[i] = slope_of ? slope_of(i / header.width, i % header.width) : 0;
+  }
+  // Clearance slope: the steepest slope of the cells within
+  // LANDFORM_CLEARANCE_M (a square, like tools/fetch_site.py steepest_around;
+  // a cell as wide as the clearance or wider covers it alone)
+  uint8_t *const near = slope + count;
+  const double step_mm = static_cast<double>(header.step_udeg) * MM_PER_UDEG_LAT_Q16 / Q16_ONE;
+  const double clearance_mm = LANDFORM_CLEARANCE_M * 1000.0;
+  const int32_t rows = step_mm >= clearance_mm ? 0 : static_cast<int32_t>(std::ceil(clearance_mm / step_mm));
+  // The narrowest cells east-west: the side nearest the pole
+  const int32_t pole_lat = header.north_udeg >= 0
+                               ? header.north_udeg
+                               : header.north_udeg - static_cast<int32_t>(header.height * header.step_udeg);
+  const double lon_mm = static_cast<double>(header.step_udeg) * mm_per_udeg_lon_q16(pole_lat) / Q16_ONE;
+  const int32_t cols = rows == 0 ? 0 : static_cast<int32_t>(std::ceil(clearance_mm / (lon_mm > 1.0 ? lon_mm : 1.0)));
+  for (uint32_t i = 0; i < count; i++) {
+    const int32_t row = static_cast<int32_t>(i / header.width);
+    const int32_t col = static_cast<int32_t>(i % header.width);
+    uint8_t most = 0;
+    for (int32_t r = row - rows; r <= row + rows; r++)
+      for (int32_t c = col - cols; c <= col + cols; c++)
+        if (r >= 0 && c >= 0 && r < header.height && c < header.width) {
+          const uint8_t v = slope[static_cast<uint32_t>(r) * header.width + static_cast<uint32_t>(c)];
+          most = v > most ? v : most;
+        }
+    near[i] = most;
   }
   return (blob);
 }
